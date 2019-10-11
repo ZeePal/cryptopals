@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+import sys
+
+input = bytes.fromhex(
+    "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
+)
+
+VOWELS = [ord(i) for i in [" ", "A", "E", "I", "O", "U", "a", "e", "i", "o", "u"]]
+
+
+def text_vowel_scores(b):
+    s = 0
+    for i in VOWELS:
+        s += b.count(i)
+    return s
+
+
+def text_letter_scores(b):
+    s = 0
+    for i in b:  # Python3 auto converts the bytes to int for me here
+        if (i > 64 and i < 91) or (i > 96 and i < 123) or i == 32:
+            s += 1
+    return s
+
+
+def xor_1byte(a, b):
+    k = b * len(a)
+    return xor(a, k)
+
+
+def xor(a, b):
+    r = int.from_bytes(a, sys.byteorder) ^ int.from_bytes(b, sys.byteorder)
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+vowel_scores = []
+letter_scores = []
+
+for i in range(256):
+    c = bytes([i])
+    r = xor_1byte(input, c)
+    vowel_scores.append((text_vowel_scores(r), c))
+    letter_scores.append((text_letter_scores(r), c))
+
+vowel_scores.sort(key=lambda t: t[0], reverse=True)
+print("=== Top 5 Keys based on Vowels ===")
+for i in range(5):
+    print("{} - {}".format(vowel_scores[i][1], vowel_scores[i][0]))
+
+letter_scores.sort(key=lambda t: t[0], reverse=True)
+print("\n=== Top 5 Keys based on Letters ===")
+for i in range(5):
+    print("{} - {}".format(letter_scores[i][1], letter_scores[i][0]))
+
+
+print('\n=== "Decrypted" Text ===')
+print(xor_1byte(input, vowel_scores[0][1]).decode())

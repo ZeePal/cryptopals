@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+import sys
+import base64
+
+test_input1 = "this is a test".encode()
+test_input2 = "wokka wokka!!!".encode()
+test_expected_distance = 37
+
+input = None
+with open("input.txt") as f:
+    input = base64.b64decode(f.read())
+
+key_size_range = range(2, 40 + 1)
+
+VOWELS = [ord(i) for i in [" ", "A", "E", "I", "O", "U", "a", "e", "i", "o", "u"]]
+
+
+def text_vowel_scores(b):
+    s = 0
+    for i in VOWELS:
+        s += b.count(i)
+    return s
+
+
+def dist(a, b):
+    x = int.from_bytes(a, sys.byteorder)
+    y = int.from_bytes(b, sys.byteorder)
+    z = x ^ y
+    return bin(z).count("1")  # Looks silly but fast
+
+
+class block_wrapper:
+    def __init__(self, data, block_size):
+        self.data = data
+        self.block_size = block_size
+
+    def __getitem__(self, index):
+        x = self.block_size * index
+        y = x + self.block_size
+        return self.data[x:y]
+
+    def get_pair(self, i):
+        return self[i * 2], self[i * 2 + 1]
+
+
+def get_key_size_score(data, key_size, checks=10):
+    blocks = block_wrapper(data, key_size)
+    score = 0
+    for i in range(checks):
+        score += dist(*blocks.get_pair(i))
+    return score / checks / key_size  # Normalizing the check count & key size
+
+
+def xor(a, b):
+    r = int.from_bytes(a, sys.byteorder) ^ int.from_bytes(b, sys.byteorder)
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+def xor_1byte(a, b):
+    k = b * len(a)
+    return xor(a, k)
+
+
+def xor_repeating(a, b):
+    k = (b * (len(a) // len(b))) + b[0 : (len(a) % len(b))]
+    return xor(a, k)
+
+
+def tranpose(data, block_size):
+    # Input: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ", 5
+    # Output: [b"AFKPUZ", b"BGLQV", b"CHMRW", b"DINSX", b"EJOTY"]
+    blocks = block_wrapper(data, block_size)
+    output = [bytearray() for _ in range(block_size)]
+
+    full_block_count = len(data) // block_size
+    for i in range(full_block_count):
+        block = blocks[i]
+        for byte_index in range(block_size):
+            output[byte_index].append(block[byte_index])
+
+    remaining_byte_count = len(data) % block_size
+    if remaining_byte_count > 0:
+        partial_block = blocks[full_block_count]
+        for byte_index in range(remaining_byte_count):
+            output[byte_index].append(partial_block[byte_index])
+    return output
+
+
+def get_1byte_xor_scores(data):
+    scores = []
+    for i in range(256):
+        k = bytes([i])
+        r = xor_1byte(data, k)
+        scores.append((text_vowel_scores(r), k))
+    return scores
+
+
+def test_distance_function(a, b, t):
+    print("=== Distance Test ===")
+    test_distance = dist(a, b)
+    print("Expected Output: {}".format(t))
+    print("My Output:       {}".format(test_distance))
+
+    if test_distance == t:
+        print("Pass!")
+    else:
+        print("Fail!")
+
+
+def get_top_key_sizes(d, r):
+    scores = [(get_key_size_score(d, i), i) for i in r]
+    scores.sort(key=lambda t: t[0])
+    return scores[0:5]
+
+
+def get_top_keys(data, key_sizes):
+    output = []
+    for key_size in key_sizes:
+        tranposed_input = tranpose(data, key_size)
+
+        scores_by_key_byte = []
+        for x in range(key_size):
+            scores_by_key_byte.append(get_1byte_xor_scores(tranposed_input[x]))
+
+        # Combined the top 5 scoring key bytes into the full key
+        for i in range(5):
+            full_key = bytearray()
+            full_key_score = 0
+            for scores in scores_by_key_byte:
+                scores.sort(key=lambda t: t[0], reverse=True)
+                full_key_score += scores[i][0]
+                full_key.append(scores[i][1][0])  # Extra [0] reference for int
+
+            # Add the found key to the key list
+            output.append((full_key_score, bytes(full_key)))
+
+    output.sort(key=lambda t: t[0], reverse=True)
+    return output[0:5]
+
+
+test_distance_function(test_input1, test_input2, test_expected_distance)
+
+print("\n=== Top Key Sizes ===")
+key_size_scores = get_top_key_sizes(input, key_size_range)
+for score in key_size_scores:
+    print("{} - {}".format(score[1], score[0]))
+
+
+print("\n=== Top Keys ===")
+key_scores = get_top_keys(input, [i[1] for i in key_size_scores])
+for score in key_scores:
+    print("{} - {}".format(score[1], score[0]))
+
+
+print('\n=== "Decrypted" Text ===')
+top_key = key_scores[0][1]
+print(xor_repeating(input, top_key).decode())
