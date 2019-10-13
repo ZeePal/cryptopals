@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+
+input = "YELLOW SUBMARINE"
+expected_output = b"YELLOW SUBMARINE\x04\x04\x04\x04"
+
+
+def unpad(d):
+    return d[: -d[-1]]
+
+
+def pad(d, block_size=16):
+    r = block_size - (len(d) % block_size)
+    if r > 0:
+        p = bytes([r]) * r
+    else:
+        p = bytes([block_size]) * block_size
+    return d + p
+
+
+def validate_padding(d, block_size=16):
+    last = d[-1]
+    if last > block_size:
+        return False
+
+    padding = bytes([last]) * last
+    if d[-last:] != padding:
+        return False
+    return True
+
+
+output = pad(input.encode(), 20)
+print("Expected Output: {}".format(expected_output))
+print("My Output:       {}".format(output))
+
+if output == expected_output:
+    print("Pass!")
+else:
+    print("Fail!")
+
+
+reverse = unpad(output).decode()
+print("\nExpected Reverse: {}".format(input))
+print("My Reverse:       {}".format(reverse))
+
+if reverse == input:
+    print("Pass!")
+else:
+    print("Fail!")
