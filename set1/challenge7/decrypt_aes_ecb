@@ -9,6 +9,6 @@ with open("input.txt") as f:
 
 c = AES.new(key, AES.MODE_ECB)
 r = c.decrypt(input)
-p = r[:-r[-1]]  # Strip the padding
+p = r[: -r[-1]]  # Strip the padding
 print('=== "Decrypted" Text ===')
 print(p.decode())
