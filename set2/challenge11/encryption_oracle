@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+import sys
+from random import randrange, randint
+from math import ceil
+from Crypto.Cipher import AES
+
+
+def random_bytes(size):
+    i = randint(0, 2**(8*size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+def pad(d, block_size=16):
+    r = block_size - (len(d) % block_size)
+    if r > 0:
+        p = bytes([r]) * r
+    else:
+        p = bytes([block_size]) * block_size
+    return d + p
+
+
+def unpad(d):
+    return d[: -d[-1]]
+
+
+def encryption_oracle(d):
+    prefix = random_bytes(randrange(5, 11))
+    suffix = random_bytes(randrange(5, 11))
+    data = pad(b''.join([prefix, d, suffix]))
+    if randrange(2):
+        return AES.new(random_bytes(16), AES.MODE_CBC, iv=random_bytes(16)).encrypt(data)
+    else:
+        return AES.new(random_bytes(16), AES.MODE_ECB).encrypt(data)
+
+
+class block_wrapper:
+    def __init__(self, data, block_size):
+        self.data = data
+        self.block_size = block_size
+        self.count = ceil(len(data) / block_size)
+
+    def __getitem__(self, index):
+        x = self.block_size * index
+        y = x + self.block_size
+        return self.data[x:y]
+
+    def __iter__(self):
+        return block_iter(self)
+
+
+class block_iter:
+    def __init__(self, blocks):
+        self.current = -1
+        self.blocks = blocks
+
+    def __next__(self):
+        self.current += 1
+        if self.current < self.blocks.count:
+            return self.blocks[self.current]
+        raise StopIteration
+
+
+def has_duplicate_block(d, s=16):
+    f = set()
+    w = block_wrapper(d, s)
+    for b in w:
+        if b in f:
+            return True
+        else:
+            f.add(b)
+    return False
+
+
+def guess_mode(d):
+    if has_duplicate_block(d):
+        return "ECB"
+    else:
+        return "CBC"
+
+
+test_data = b"a" * 100
+for i in range(20):
+    print("My Guess is: {}".format(guess_mode(encryption_oracle(test_data))))
