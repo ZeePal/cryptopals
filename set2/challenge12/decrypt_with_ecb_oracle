@@ -138,6 +138,5 @@ def decrypt_ecb_oracle(f):
     return decrypted  # No need to remove padding as we know the exact size
 
 
-z = decrypt_ecb_oracle(encryption_oracle)
 print('=== Decrypted Text ===')
-print(z.decode())
+print(decrypt_ecb_oracle(encryption_oracle).decode())
