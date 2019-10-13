@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+import base64
+import sys
+from random import randint
+from math import ceil
+from Crypto.Cipher import AES
+
+hidden = base64.b64decode("""Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
+aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
+dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
+YnkK""")
+
+
+def random_bytes(size):
+    i = randint(0, 2**(8*size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+unknown_cipher = AES.new(random_bytes(16), AES.MODE_ECB)
+
+
+def pad(d, block_size=16):
+    r = block_size - (len(d) % block_size)
+    if r > 0:
+        p = bytes([r]) * r
+    else:
+        p = bytes([block_size]) * block_size
+    return d + p
+
+
+def unpad(d):
+    return d[: -d[-1]]
+
+
+def encryption_oracle(prefix):
+    return unknown_cipher.encrypt(pad(prefix + hidden))
+
+
+class block_wrapper:
+    def __init__(self, data, block_size):
+        self.data = data
+        self.block_size = block_size
+        self.count = ceil(len(data) / block_size)
+
+    def __getitem__(self, index):
+        x = self.block_size * index
+        y = x + self.block_size
+        return self.data[x:y]
+
+    def __iter__(self):
+        return block_iter(self)
+
+
+class block_iter:
+    def __init__(self, blocks):
+        self.current = -1
+        self.blocks = blocks
+
+    def __next__(self):
+        self.current += 1
+        if self.current < self.blocks.count:
+            return self.blocks[self.current]
+        raise StopIteration
+
+
+def has_duplicate_block(data, block_size):
+    found = set()
+    blocks = block_wrapper(data, block_size)
+    for block in blocks:
+        if block in found:
+            return True
+        else:
+            found.add(block)
+    return False
+
+
+def detect_block_and_data_size(f):
+    padding = bytearray()
+    orig_length = len(f(padding))
+    current_length = orig_length
+
+    while current_length == orig_length:
+        padding.append(ord("A"))
+        current_length = len(f(padding))
+
+    block_size = current_length - orig_length
+    data_size = orig_length - len(padding)
+    return block_size, data_size
+
+
+def is_ebc_oracle(f, block_size):
+    s = b"A" * (block_size * 5)
+    return has_duplicate_block(f(s), block_size)
+
+
+def create_search_prefix(block_size, known):
+    size = block_size - 1
+    tail = known[-size:]
+    padding = size - len(tail)
+    return (b"A" * padding) + tail
+
+
+def get_target_block(f, block_size, block_index, byte_index):
+    remaining = block_size - byte_index - 1
+    return block_wrapper(f(b"A" * remaining), block_size)[block_index]
+
+
+def find_next_byte(f, target, prefix):
+    block_size = len(target)
+    for i in range(256):
+        c = bytes([i])
+        r = f(prefix + c)[:block_size]
+        if r == target:
+            return c
+    return None
+
+
+def decrypt_ecb_oracle(f):
+    block_size, byte_count = detect_block_and_data_size(f)
+    if not is_ebc_oracle(f, block_size):
+        raise ValueError("Unable to detect ECB Mode from oracle!")
+
+    full_block_count = byte_count // block_size
+    partial_block_size = byte_count % block_size
+
+    decrypted = bytearray()
+    for i in range(full_block_count):
+        for x in range(block_size):
+            target = get_target_block(f, block_size, i, x)
+            prefix = create_search_prefix(block_size, decrypted)
+            decrypted.append(find_next_byte(f, target, prefix)[0])
+
+    for x in range(partial_block_size):
+        target = get_target_block(f, block_size, full_block_count, x)
+        prefix = create_search_prefix(block_size, decrypted)
+        decrypted.append(find_next_byte(f, target, prefix)[0])
+
+    return decrypted  # No need to remove padding as we know the exact size
+
+
+z = decrypt_ecb_oracle(encryption_oracle)
+print('=== Decrypted Text ===')
+print(z.decode())
