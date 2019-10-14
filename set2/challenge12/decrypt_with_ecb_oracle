@@ -5,14 +5,16 @@ from random import randint
 from math import ceil
 from Crypto.Cipher import AES
 
-hidden = base64.b64decode("""Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
+hidden = base64.b64decode(
+    """Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
 aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
 dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
-YnkK""")
+YnkK"""
+)
 
 
 def random_bytes(size):
-    i = randint(0, 2**(8*size))
+    i = randint(0, 2 ** (8 * size))
     return i.to_bytes(size, sys.byteorder)
 
 
@@ -138,5 +140,5 @@ def decrypt_ecb_oracle(f):
     return decrypted  # No need to remove padding as we know the exact size
 
 
-print('=== Decrypted Text ===')
+print("=== Decrypted Text ===")
 print(decrypt_ecb_oracle(encryption_oracle).decode())
