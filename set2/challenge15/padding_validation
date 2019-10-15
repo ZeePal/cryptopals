@@ -24,6 +24,9 @@ def pad(d, block_size=16):
 
 def valid_padding(d, block_size=16):
     last = d[-1]
+    if last == 0:
+        return False
+
     if not d.endswith(bytes([last]) * last):
         return False
 
