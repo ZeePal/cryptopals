@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+import sys
+from base64 import b64decode
+from random import randint, choice
+from Crypto.Cipher import AES
+
+
+unknown_strings = b"""MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=
+MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=
+MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==
+MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==
+MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl
+MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==
+MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==
+MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=
+MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=
+MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93""".splitlines()
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+unknown_key = random_bytes(16)
+
+
+class block_wrapper:
+    def __init__(self, data, block_size):
+        self.data = data
+        self.block_size = block_size
+
+    def __getitem__(self, index):
+        x = self.block_size * index
+        y = x + self.block_size
+        return self.data[x:y]
+
+
+def unpad(d):
+    if not valid_padding(d):
+        raise ValueError("Invalid Padding!")
+    return d[: -d[-1]]
+
+
+def pad(d, block_size=16):
+    r = block_size - (len(d) % block_size)
+    if r > 0:
+        p = bytes([r]) * r
+    else:
+        p = bytes([block_size]) * block_size
+    return d + p
+
+
+def valid_padding(d, block_size=16):
+    last = d[-1]
+    if last == 0:
+        return False
+
+    if not d.endswith(bytes([last]) * last):
+        return False
+
+    if last > block_size:
+        return False
+    return True
+
+
+def get_cipher_text():
+    cipher = AES.new(unknown_key, AES.MODE_CBC)
+    cipher_text = cipher.encrypt(pad(b64decode(choice(unknown_strings))))
+    return cipher.iv + cipher_text
+
+
+def padding_oracle(data):
+    block_size = len(unknown_key)
+    iv = data[:block_size]
+    cipher = AES.new(unknown_key, AES.MODE_CBC, iv=iv)
+    return valid_padding(cipher.decrypt(data[block_size:]))
+
+
+def oracle_find_valid_byte(f, data, index, start=0):
+    for c in range(start, 256):
+        data[index] = c
+        if f(data):
+            return c
+    return None
+
+
+def oracle_decrypt_byte(f, data, index, expected_value, start=0):
+    orig = data[index]
+    r = oracle_find_valid_byte(f, data, index, start=start)
+    if r is not None:
+        return orig ^ r ^ expected_value, r
+    return None, None
+
+
+def oracle_decrypt_block_last_2bytes(f, data, block_size):
+    last_byte_index = block_size - 1
+    second_last_byte_index = block_size - 2
+    expected_padding = 1
+
+    # Quick restore values if we guess the wrong last byte
+    last_byte_orig = data[last_byte_index]
+    second_last_byte_orig = data[second_last_byte_index]
+
+    # Find 1 of the 2 last byte solutions
+    last_byte, last_byte_progress = oracle_decrypt_byte(
+        f, data, last_byte_index, expected_padding
+    )
+
+    # Is there a 2nd last byte solution for the solution we found above?
+    expected_padding += 1
+    data[last_byte_index] ^= expected_padding ^ (expected_padding - 1)
+    second_last_byte, _ = oracle_decrypt_byte(
+        f, data, second_last_byte_index, expected_padding
+    )
+
+    if second_last_byte is None:
+        # No, get the other possible solution for the last byte
+        data[last_byte_index] = last_byte_orig
+        data[second_last_byte_index] = second_last_byte_orig
+
+        expected_padding = 1
+        last_byte, _ = oracle_decrypt_byte(
+            f, data, last_byte_index, expected_padding, start=last_byte_progress + 1
+        )
+
+        # Get the now possible 2nd last byte solution
+        expected_padding += 1
+        data[last_byte_index] ^= expected_padding ^ (expected_padding - 1)
+        second_last_byte, _ = oracle_decrypt_byte(
+            f, data, second_last_byte_index, expected_padding
+        )
+    # Yes, a solution exists use it
+    return second_last_byte, last_byte
+
+
+def oracle_decrypt_block(f, orig_data, block_size):
+    output = bytearray(block_size)
+    data = bytearray(orig_data)
+
+    # Get the last 2 bytes of the block
+    output[block_size - 2], output[block_size - 1] = oracle_decrypt_block_last_2bytes(
+        f, data, block_size
+    )
+
+    # Process remaining bytes now we are certain on the last 2 bytes
+    target_padding = 3
+    for i in range(2, block_size):
+        # Update the padding ready for the next byte search
+        padding_diff = target_padding ^ target_padding - 1
+        for x in range(target_padding - 1):
+            index = block_size - 1 - x
+            data[index] ^= padding_diff
+
+        index = block_size - 1 - i
+        output[index], _ = oracle_decrypt_byte(f, data, index, target_padding)
+        target_padding += 1
+    return output
+
+
+def oracle_decrypt(f, cipher_text, block_size=16):
+    blocks = block_wrapper(cipher_text, block_size)
+    output = bytearray()
+    for i in range((len(cipher_text) // block_size) - 1):
+        data = blocks[i] + blocks[i + 1]
+        b = oracle_decrypt_block(f, data, block_size)
+        output.extend(b)
+    return output
+
+
+print("=== Decrypted ===")
+found = set()
+while len(found) < 10:
+    target = get_cipher_text()
+    plain_text = unpad(oracle_decrypt(padding_oracle, target)).decode()
+    if plain_text not in found:
+        found.add(plain_text)
+        print(plain_text)
+
+print("\n=== Decrypted in order ===")
+for l in sorted(found):
+    print(l[6:])
