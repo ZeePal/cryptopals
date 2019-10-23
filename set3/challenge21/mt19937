@@ -260,15 +260,12 @@ class mt19937:
     def __init__(self, seed=5489):
         self.state = [None] * self.n
         self.state[0] = seed
-        self.index = self.n
-        for i in range(1, self.n):
-            self.state[i] = self.w_mask & (
-                self.f * (self.state[i - 1] ^ (self.state[i - 1] >> (self.w - 2))) + i
-            )
+        self.index = 0
+        self.seeded_to = 1
 
     def extract_number(self):
-        if self.index >= self.n:
-            self.twist()
+        self.jit_seed()
+        self.jit_twist()
 
         y = self.state[self.index]
         y ^= (y >> self.u) & self.d
@@ -279,16 +276,28 @@ class mt19937:
         self.index += 1
         return self.w_mask & y
 
-    def twist(self):
-        for i in range(self.n):
-            x = (self.state[i] & self.upper_mask) + (
-                self.state[(i + 1) % self.n] & self.lower_mask
-            )
-            xA = x >> 1
-            if (x % 2) != 0:
-                xA ^= self.a
-            self.state[i] = self.state[(i + self.m) % self.n] ^ xA
-        self.index = 0
+    def jit_seed(self):
+        max_state_index_needed = (self.index + self.m) % self.n
+        if not max_state_index_needed < self.seeded_to:
+            for i in range(self.seeded_to, max_state_index_needed + 1):
+                self.state[i] = self.w_mask & (
+                    self.f * (self.state[i - 1] ^ (self.state[i - 1] >> (self.w - 2)))
+                    + i
+                )
+            self.seeded_to = max_state_index_needed + 1
+
+    def jit_twist(self):
+        if self.index >= self.n:
+            self.index = 0
+
+        i = self.index
+        x = (self.state[i] & self.upper_mask) + (
+            self.state[(i + 1) % self.n] & self.lower_mask
+        )
+        xA = x >> 1
+        if (x % 2) != 0:
+            xA ^= self.a
+        self.state[i] = self.state[(i + self.m) % self.n] ^ xA
 
 
 for seed, values in tests.items():
