@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+import sys
+from base64 import b64decode
+from random import randint
+from Crypto.Cipher import AES
+
+input = None
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+unknown_key = random_bytes(16)
+nonce_size = len(unknown_key) // 2
+
+
+def load_input():
+    key = "YELLOW SUBMARINE".encode()
+    with open("input.txt") as f:
+        data = b64decode(f.read())
+
+    c = AES.new(key, AES.MODE_ECB)
+    return unpad(c.decrypt(data))
+
+
+def unpad(d):
+    return d[: -d[-1]]
+
+
+def ctr_encrypt(key, text, nonce=None):
+    cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+    return cipher.nonce + cipher.encrypt(text)
+
+
+def ctr_decrypt(key, text, nonce):
+    cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+    return cipher.encrypt(text)
+
+
+def edit(ciphertext, key, offset, newtext):
+    nonce = ciphertext[:nonce_size]
+    cipher_text = ciphertext[nonce_size:]
+    plain_text = bytearray(ctr_decrypt(key, cipher_text, nonce))
+    plain_text[offset : offset + len(newtext)] = newtext
+    return ctr_encrypt(key, plain_text, nonce=nonce)
+
+
+def triple_xor(a, b, c):
+    r = (
+        int.from_bytes(a, sys.byteorder)
+        ^ int.from_bytes(b, sys.byteorder)
+        ^ int.from_bytes(c, sys.byteorder)
+    )
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+def decrypt_message(f, input_cipher_text):
+    new_plain_text = b"A" * (len(input_cipher_text) - nonce_size)
+    edited_cipher_text = f(input_cipher_text, unknown_key, 0, new_plain_text)
+    return triple_xor(
+        edited_cipher_text[nonce_size:], new_plain_text, input_cipher_text[nonce_size:]
+    )
+
+
+input = load_input()
+input_cipher_text = ctr_encrypt(unknown_key, input)
+print(decrypt_message(edit, input_cipher_text).decode())
