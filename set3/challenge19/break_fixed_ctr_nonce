@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+import sys
+import random
+import curses
+from base64 import b64decode
+from math import ceil
+from Crypto.Cipher import AES
+
+input_nonce = 0
+input = [
+    b64decode(i)
+    for i in b"""SSBoYXZlIG1ldCB0aGVtIGF0IGNsb3NlIG9mIGRheQ==
+Q29taW5nIHdpdGggdml2aWQgZmFjZXM=
+RnJvbSBjb3VudGVyIG9yIGRlc2sgYW1vbmcgZ3JleQ==
+RWlnaHRlZW50aC1jZW50dXJ5IGhvdXNlcy4=
+SSBoYXZlIHBhc3NlZCB3aXRoIGEgbm9kIG9mIHRoZSBoZWFk
+T3IgcG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==
+T3IgaGF2ZSBsaW5nZXJlZCBhd2hpbGUgYW5kIHNhaWQ=
+UG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==
+QW5kIHRob3VnaHQgYmVmb3JlIEkgaGFkIGRvbmU=
+T2YgYSBtb2NraW5nIHRhbGUgb3IgYSBnaWJl
+VG8gcGxlYXNlIGEgY29tcGFuaW9u
+QXJvdW5kIHRoZSBmaXJlIGF0IHRoZSBjbHViLA==
+QmVpbmcgY2VydGFpbiB0aGF0IHRoZXkgYW5kIEk=
+QnV0IGxpdmVkIHdoZXJlIG1vdGxleSBpcyB3b3JuOg==
+QWxsIGNoYW5nZWQsIGNoYW5nZWQgdXR0ZXJseTo=
+QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=
+VGhhdCB3b21hbidzIGRheXMgd2VyZSBzcGVudA==
+SW4gaWdub3JhbnQgZ29vZCB3aWxsLA==
+SGVyIG5pZ2h0cyBpbiBhcmd1bWVudA==
+VW50aWwgaGVyIHZvaWNlIGdyZXcgc2hyaWxsLg==
+V2hhdCB2b2ljZSBtb3JlIHN3ZWV0IHRoYW4gaGVycw==
+V2hlbiB5b3VuZyBhbmQgYmVhdXRpZnVsLA==
+U2hlIHJvZGUgdG8gaGFycmllcnM/
+VGhpcyBtYW4gaGFkIGtlcHQgYSBzY2hvb2w=
+QW5kIHJvZGUgb3VyIHdpbmdlZCBob3JzZS4=
+VGhpcyBvdGhlciBoaXMgaGVscGVyIGFuZCBmcmllbmQ=
+V2FzIGNvbWluZyBpbnRvIGhpcyBmb3JjZTs=
+SGUgbWlnaHQgaGF2ZSB3b24gZmFtZSBpbiB0aGUgZW5kLA==
+U28gc2Vuc2l0aXZlIGhpcyBuYXR1cmUgc2VlbWVkLA==
+U28gZGFyaW5nIGFuZCBzd2VldCBoaXMgdGhvdWdodC4=
+VGhpcyBvdGhlciBtYW4gSSBoYWQgZHJlYW1lZA==
+QSBkcnVua2VuLCB2YWluLWdsb3Jpb3VzIGxvdXQu
+SGUgaGFkIGRvbmUgbW9zdCBiaXR0ZXIgd3Jvbmc=
+VG8gc29tZSB3aG8gYXJlIG5lYXIgbXkgaGVhcnQs
+WWV0IEkgbnVtYmVyIGhpbSBpbiB0aGUgc29uZzs=
+SGUsIHRvbywgaGFzIHJlc2lnbmVkIGhpcyBwYXJ0
+SW4gdGhlIGNhc3VhbCBjb21lZHk7
+SGUsIHRvbywgaGFzIGJlZW4gY2hhbmdlZCBpbiBoaXMgdHVybiw=
+VHJhbnNmb3JtZWQgdXR0ZXJseTo=
+QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=""".splitlines()
+]
+input_max_length = sorted([len(i) for i in input], reverse=True)[0]
+
+
+def random_bytes(size):
+    i = random.randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+unknown_key = random_bytes(16)
+
+
+class block_wrapper:
+    def __init__(self, data, block_size):
+        self.data = data
+        self.block_size = block_size
+        self.count = ceil(len(data) / block_size)
+
+    def __getitem__(self, index):
+        x = self.block_size * index
+        y = x + self.block_size
+        return self.data[x:y]
+
+    def __iter__(self):
+        return block_iter(self)
+
+
+class block_iter:
+    def __init__(self, blocks):
+        self.current = -1
+        self.blocks = blocks
+
+    def __next__(self):
+        self.current += 1
+        if self.current < self.blocks.count:
+            return self.blocks[self.current]
+        raise StopIteration
+
+
+def xor(a, b):
+    r = int.from_bytes(a, sys.byteorder) ^ int.from_bytes(b, sys.byteorder)
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+def ctr_crypt(key, nonce, plain_text, block_size=16):
+    cipher = AES.new(
+        key, AES.MODE_CTR, nonce=nonce.to_bytes(block_size // 2, sys.byteorder)
+    )
+    return cipher.encrypt(plain_text)
+
+
+def _move(screen, mod_y, mod_x):
+    y, x = curses.getsyx()
+    y += mod_y
+    x += mod_x
+    if y < 0 or x < 0:
+        return
+    screen.move(y, x)
+
+
+def _get_drawable_char(i):
+    return chr(i) if i < 128 and i > 31 else "?"
+
+
+def _init_draw(screen, data, keystream):
+    y, x = curses.getsyx()
+    for i, line in enumerate(data):
+        screen.addstr(i, 0, len(line) * "_")
+    screen.move(y, x)
+
+
+def _update_column(screen, data, keystream, char):
+    y, x = curses.getsyx()
+    old_keystream = keystream[x]
+    if len(data[y]) > x:
+        orig = data[y][x] ^ old_keystream
+        keystream[x] = orig ^ char
+        for i, line in enumerate(data):
+            if len(line) > x:
+                line[x] ^= old_keystream ^ keystream[x]
+                screen.addch(i, x, _get_drawable_char(line[x]))
+        screen.move(y, x)
+
+
+def _reset_column(screen, data, keystream):
+    y, x = curses.getsyx()
+    keystream[x] = 0
+    for i, line in enumerate(data):
+        if len(line) > x:
+            screen.addch(i, x, "_")
+    screen.move(y, x)
+
+
+def main(screen):
+    screen.clear()
+
+    data = [bytearray(ctr_crypt(unknown_key, 0, i)) for i in input]
+    keystream = bytearray(input_max_length)
+    _init_draw(screen, data, keystream)
+
+    while True:
+        c = screen.getch()
+        if c == 27:  # ESC or Alt
+            return  # Exit app
+        elif c == curses.KEY_RIGHT:
+            _move(screen, 0, 1)
+        elif c == curses.KEY_LEFT:
+            _move(screen, 0, -1)
+        elif c == curses.KEY_UP:
+            _move(screen, -1, 0)
+        elif c == curses.KEY_DOWN:
+            _move(screen, 1, 0)
+        elif c == curses.KEY_BACKSPACE:
+            _reset_column(screen, data, keystream)
+        elif c < 256:
+            _update_column(screen, data, keystream, c)
+
+
+curses.wrapper(main)

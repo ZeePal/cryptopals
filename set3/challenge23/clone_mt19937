@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+from random import randint
+
+
+class mt19937:
+    # Source: https://en.wikipedia.org/wiki/Mersenne_Twister
+    w = 32
+    n = 624
+    m = 397
+    r = 31
+
+    a = int("9908B0DF", 16)
+
+    u = 11
+    d = int("FFFFFFFF", 16)
+
+    s = 7
+    b = int("9D2C5680", 16)
+
+    t = 15
+    c = int("EFC60000", 16)
+
+    l = 18
+
+    f = 1812433253
+
+    lower_mask = (1 << r) - 1
+    w_mask = 2 ** w - 1  # lowest w bits of X
+    upper_mask = w_mask & (~lower_mask)
+
+    def __init__(self, seed=5489):
+        self.state = [None] * self.n
+        self.state[0] = seed
+        self.index = self.n
+        for i in range(1, self.n):
+            self.state[i] = self.w_mask & (
+                self.f * (self.state[i - 1] ^ (self.state[i - 1] >> (self.w - 2))) + i
+            )
+
+    def extract_number(self):
+        if self.index >= self.n:
+            self.twist()
+
+        y = self.state[self.index]
+        y ^= (y >> self.u) & self.d
+        y ^= (y << self.s) & self.b
+        y ^= (y << self.t) & self.c
+        y ^= y >> self.l
+
+        self.index += 1
+        return self.w_mask & y
+
+    def twist(self):
+        for i in range(self.n):
+            x = (self.state[i] & self.upper_mask) + (
+                self.state[(i + 1) % self.n] & self.lower_mask
+            )
+            xA = x >> 1
+            if (x % 2) != 0:
+                xA ^= self.a
+            self.state[i] = self.state[(i + self.m) % self.n] ^ xA
+        self.index = 0
+
+
+def untemper_mt19937(i):
+    # Magic numbers from mt19937
+    u = 11
+    s = 7
+    b = int("9D2C5680", 16)
+    t = 15
+    c = int("EFC60000", 16)
+    l = 18
+
+    # If the shift is half the bit length or higher only 1 shift required to solve
+    # Coz a shift then xor results in the original bits falling through
+    # Which you can then shift and xor to get the remaining bits back
+    i ^= i >> l
+
+    # Due to c's influence we only need to shift once to invert this step
+    # Otherwise this would be 2 shifts without c
+    i ^= (i << t) & c
+
+    # b doesn't influence enough so we need to do all 4 shifts to invert this step
+    x = i
+    for _ in range(4):
+        x = ((x << s) & b) ^ i
+    i = x
+
+    # As mt19937's d binary value is all 1's it doesn't do anything in this step
+    # The normal 2 shifts to invert all the bits
+    z = i ^ (i >> u)
+    i ^= z >> u
+    return i
+
+
+def test(orig, clone):
+    for _ in range(100000):
+        if orig.extract_number() != clone.extract_number():
+            return False
+    return True
+
+
+orig = mt19937(randint(0, 2 ** 32 - 1))
+clone = mt19937()
+
+loops = len(clone.state)
+for i in range(loops):
+    clone.state[i] = untemper_mt19937(orig.extract_number())
+clone.index = loops
+
+if test(orig, clone):
+    print("Test Passed!")
+else:
+    print("Test Failed!")

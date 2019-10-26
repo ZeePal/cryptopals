@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+import sys
+from random import randint
+from Crypto.Cipher import AES
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+unknown_key = random_bytes(16)
+nonce_size = len(unknown_key) // 2
+
+
+def ctr_encrypt(key, text, nonce=None):
+    cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+    return cipher.nonce + cipher.encrypt(text)
+
+
+def ctr_decrypt(key, text, nonce):
+    cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)
+    return cipher.encrypt(text)
+
+
+def encryption_oracle(plain_text):
+    return ctr_encrypt(
+        unknown_key,
+        b"".join(
+            [
+                b"comment1=cooking%20MCs;userdata=",
+                plain_text.replace(b";", b"%3B").replace(b"=", b"%3D"),
+                b";comment2=%20like%20a%20pound%20of%20bacon",
+            ]
+        ),
+    )
+
+
+def process_admin_request(cipher_text):
+    nonce = cipher_text[:nonce_size]
+    plain_text = ctr_decrypt(unknown_key, cipher_text[nonce_size:], nonce)
+    for section in plain_text.split(b";"):
+        key, value = section.split(b"=", 1)
+        if key == b"admin":
+            return True
+    return False
+
+
+def test_basic_inject_doesnt_work():
+    print("=== Admin Inject Test ===")
+    data = encryption_oracle(b";admin=true")
+    if process_admin_request(data):
+        print("Fail!")
+    else:
+        print("Pass!")
+
+
+def find_bitflip(f, cipher_text, to_flip):
+    data = bytearray(cipher_text)
+
+    # Ignore IV & first block for "unknown" prefix data
+    for base_index in range(nonce_size, len(data) - nonce_size):
+        to_restore = {}
+        for position, diff in to_flip.items():
+            index = base_index + position
+            to_restore[index] = data[index]
+            data[index] ^= diff
+
+        try:
+            result = f(data)
+        except:  # Corrupt Data is corrupt
+            result = None
+        if result:
+            return result
+
+        for index, byte in to_restore.items():
+            data[index] = byte
+    return None
+
+
+test_basic_inject_doesnt_work()
+
+
+print("\n=== Admin Flip ===")
+to_inject = b":admin+true"
+cipher_text = encryption_oracle(b"Some User Data" + to_inject)
+to_flip = {
+    to_inject.index(b":"): ord(b":") ^ ord(b";"),
+    to_inject.index(b"+"): ord(b"+") ^ ord(b"="),
+}
+
+if find_bitflip(process_admin_request, cipher_text, to_flip):
+    print("Got Admin!")
+else:
+    print("no admin today :(")

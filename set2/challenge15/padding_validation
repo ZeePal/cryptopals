@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+input_output_map = {
+    b"ICE ICE BABY\x04\x04\x04\x04": True,
+    b"ICE ICE BABY\x05\x05\x05\x05": False,
+    b"ICE ICE BABY\x01\x02\x03\x04": False,
+}
+
+
+def unpad(d):
+    if not valid_padding(d):
+        raise ValueError("Invalid Padding!")
+    return d[: -d[-1]]
+
+
+def pad(d, block_size=16):
+    r = block_size - (len(d) % block_size)
+    if r > 0:
+        p = bytes([r]) * r
+    else:
+        p = bytes([block_size]) * block_size
+    return d + p
+
+
+def valid_padding(d, block_size=16):
+    last = d[-1]
+    if last == 0:
+        return False
+
+    if not d.endswith(bytes([last]) * last):
+        return False
+
+    if last > block_size:
+        return False
+    return True
+
+
+for block, expected_output in input_output_map.items():
+    print("=== For Block ({}) ===".format(block))
+    output = valid_padding(block)
+    print("Expected Output: {}".format(expected_output))
+    print("My Output:       {}".format(output))
+    if output == expected_output:
+        print("Pass!\n")
+    else:
+        print("Fail!\n")
