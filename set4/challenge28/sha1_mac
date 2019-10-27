@@ -9,6 +9,7 @@ tests = {
     "031cce6ce8c1cf98aab41c1534ef673479c3b15f": (
         b"The quick brown fox jumps over the lazy cog" * 100
     ),
+    "9d3953e922387b19a2f0e7f27ca2b790dbe57dfb": b"A" * 125,
 }
 
 
@@ -47,7 +48,14 @@ class sha1:
 
         # Append the real message_size in bits as a 64bit int
         chunk.extend((message_size * 8).to_bytes(8, "big"))
-        return self._process_chunk(chunk)
+
+        # Padded chunk maybe 2 blocks worth
+        if len(chunk) > self.block_size:
+            state = self._process_chunk(chunk[: self.block_size], self._state)
+            chunk = chunk[self.block_size :]
+        else:
+            state = self._state
+        return self._process_chunk(chunk, state)
 
     def _left_rotate(self, number, amount):
         return (
@@ -66,8 +74,8 @@ class sha1:
             )
         return w
 
-    def _process_chunk(self, chunk):
-        a, b, c, d, e = self._state
+    def _process_chunk(self, chunk, state):
+        a, b, c, d, e = state
         w = self._get_words(chunk)
 
         for i in range(0, 80):
@@ -92,11 +100,11 @@ class sha1:
             a = temp
 
         return (
-            (self._state[0] + a) & self.word_mask,
-            (self._state[1] + b) & self.word_mask,
-            (self._state[2] + c) & self.word_mask,
-            (self._state[3] + d) & self.word_mask,
-            (self._state[4] + e) & self.word_mask,
+            (state[0] + a) & self.word_mask,
+            (state[1] + b) & self.word_mask,
+            (state[2] + c) & self.word_mask,
+            (state[3] + d) & self.word_mask,
+            (state[4] + e) & self.word_mask,
         )
 
     def digest(self):
@@ -114,7 +122,7 @@ class sha1:
 
         # Loop though all full blocks and process them
         while len(next) == self.block_size:
-            self._state = self._process_chunk(next)
+            self._state = self._process_chunk(next, self._state)
             self._message_size += self.block_size
             next = data[i : i + self.block_size]
             i += self.block_size
