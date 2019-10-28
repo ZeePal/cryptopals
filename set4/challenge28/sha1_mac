@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import struct
 from random import randint
 
 tests = {
@@ -108,11 +109,10 @@ class sha1:
         )
 
     def digest(self):
-        h0, h1, h2, h3, h4 = self._get_final_state()
-        return (h0 << 128) | (h1 << 96) | (h2 << 64) | (h3 << 32) | h4
+        return struct.pack(">5I", *self._get_final_state())
 
     def hexdigest(self):
-        return "{0:0{1}x}".format(self.digest(), self.digest_size * 2)
+        return self.digest().hex()
 
     def update(self, data):
         # Create the first block to update with based on the queued data in _pending
