@@ -48,7 +48,9 @@ class md4:
         # Pre-processing to pad the message to a multiple of block_size
         chunk.append(0x80)
         # Magic Number 9: 1 byte for above pad & 8 bytes for final message size suffix
-        remaining_length = self.block_size - ((message_size + 9) % self.block_size)
+        remaining_length = (
+            self.block_size - ((message_size + 9) % self.block_size)
+        ) % self.block_size  # On perfect message size add no padding
         chunk.extend(b"\x00" * remaining_length)
 
         # Append the real message_size in bits as a 64bit int
