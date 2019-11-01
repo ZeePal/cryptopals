@@ -2,6 +2,7 @@
 
 
 tests = {
+    # Source: https://oeis.org/A221557
     5489: [
         3499211612,
         581869302,
@@ -26,6 +27,7 @@ tests = {
         676943009,
         3117454609,
     ],
+    # Source: https://github.com/google/gofountain/blob/master/mersenne_test.go
     1: [
         1791095845,
         4282876139,
