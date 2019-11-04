@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+import cherrypy
+import sys
+import hmac
+from hashlib import sha1
+from random import randint
+from time import sleep
+
+HOST = "127.0.0.1"  # Which address to bind on?
+PORT = 9000  # Which port to bind on?
+SNOOZE = 0.05  # How long to sleep in between byte checks in seconds?
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+hmac_key = random_bytes(randint(32, 128))
+
+
+class test(object):
+    @cherrypy.expose
+    def test(self, file=None, signature=None):
+        if not file or not signature:
+            raise ValueError("Missing required query parameters")
+
+        hash = hmac.new(hmac_key, file.encode(), sha1).digest().hex()
+        if insecure_compare(hash, signature):
+            print(f"Valid signature received, My key is: {hmac_key}")
+            return "You got me!"
+
+        raise ValueError("bad signature")
+
+
+def insecure_compare(a, b):
+    for i, v in enumerate(a):
+        if b[i] != v:
+            return False
+        sleep(SNOOZE)
+    return True
+
+
+if __name__ == "__main__":
+    cherrypy.config.update(
+        {
+            "server.socket_host": HOST,
+            "server.socket_port": PORT,
+            "log.screen": False,  # Sssshhhh my pretty
+            "log.access_file": "",
+            "log.error_file": "",
+        }
+    )
+    cherrypy.quickstart(test())

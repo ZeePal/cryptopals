@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+import statistics
+import urllib.parse
+import requests
+from multiprocessing import Pool
+from enum import Enum
+
+# HTTP Server to check against
+HOST = "127.0.0.1"
+PORT = 9000
+
+# Used to speed up tests, depends on executing machine though
+WORKER_POOL_SIZE = 1  # How many checks at once? (Lower more accurate but slower)
+CHECK_COUNT = 3  # How many checks per possibility? (Higher more accurate but slower)
+SIGMA = 2  # How certain do we want to be for finding outliers?
+RETRY_COUNT = 2  # Unable to solve a position for X time, re-solve the previous position
+
+
+def _get_elapsed_and_status(data, signature):
+    url = f"http://{HOST}:{PORT}/test?file={data}&signature={signature}"
+    try:
+        r = requests.get(url)
+        return r.elapsed.total_seconds(), r.status_code
+    except requests.exceptions.RequestException:
+        return None, None  # Connection Issue
+
+
+def _check_signature(data, signature, c, loops=CHECK_COUNT):
+    shortest_elapsed = 2 ** 32
+    i = 0
+    while i < loops:
+        elapsed, status = _get_elapsed_and_status(data, signature)
+        if status == 200:  # Found the signature no need to check anymore
+            return c, elapsed, status
+        elif elapsed is not None:
+            i += 1
+            if elapsed < shortest_elapsed:
+                shortest_elapsed = elapsed
+    return c, shortest_elapsed, status
+
+
+def _helper_check_signature(args):
+    return _check_signature(*args)
+
+
+class find_status(Enum):
+    UNKNOWN = -1
+    SOLVED = 0
+    FOUND = 1
+
+
+def _find_next(data, signature, position, pool):
+    possibilities = b"0123456789abcdef"
+
+    # Create a list of each possibility to check
+    work = []
+    for c in possibilities:
+        signature[position] = c
+        work.append((data, signature.decode(), c))
+
+    # Check each possibility and store the outcomes
+    times = []  # For how long each 1 took for statistics
+    results = []  # For finding the outlier
+    for c, elapsed, status in pool.imap_unordered(_helper_check_signature, work):
+        if status == 200:  # Found the right signature!
+            signature[position] = c
+            return find_status.SOLVED
+        times.append(elapsed)
+        results.append((c, elapsed))
+
+    # Run the numbers
+    mean = statistics.mean(times)
+    stdev = statistics.pstdev(times, mean) * SIGMA
+
+    # Extract the black sheep from the list
+    outliers = [x for x in results if x[1] < (mean - stdev) or x[1] > (mean + stdev)]
+
+    # 1 Outlier thats greater than the mean, likely what we are after
+    if len(outliers) == 1 and outliers[0][1] > mean:
+        signature[position] = outliers[0][0]
+        return find_status.FOUND
+    else:
+        # Results too noisey to be sure
+        return find_status.UNKNOWN
+
+
+def find_signature(file_data, signature_length=40, echo=True):
+    data = urllib.parse.quote(file_data)
+
+    signature = bytearray(b"0" * signature_length)
+    position = 0
+    tries = 0
+    with Pool(WORKER_POOL_SIZE) as pool:
+        while position < signature_length:
+            result = _find_next(data, signature, position, pool)
+            if result == find_status.FOUND:
+                if echo:
+                    print(chr(signature[position]), end="", flush=True)
+                position += 1
+                tries = 0
+            elif result == find_status.SOLVED:
+                if echo:
+                    print(chr(signature[position]), end="", flush=True)
+                return True, signature.decode()  # 100% Match
+            elif result == find_status.UNKNOWN:
+                tries += 1
+                if tries >= RETRY_COUNT:
+                    if echo:
+                        print("\b", end="", flush=True)
+                    position -= 1
+                    tries = 0
+                    if position < 0:
+                        break  # Too noisey to find anything
+                continue
+
+    return False, signature.decode()  # This is what i found _shrug_
+
+
+if __name__ == "__main__":
+    print("Searching for signature...")
+    match, signature = find_signature("Sign me!")
+    if match:
+        print(f"\nFound the signature: {signature}")
+    else:
+        print(f"\nUnable to find full signature, found: {signature}")

@@ -1,2 +1,4 @@
 # python 3.6.8+
 pycryptodome==3.9.0
+requests==2.18.4
+CherryPy==18.3.0
