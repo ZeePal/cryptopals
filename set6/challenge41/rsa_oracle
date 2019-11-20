@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+import sys
+from Crypto.Util import number
+from random import randint
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+def _get_prime(N=512, e=3):
+    return number.getStrongPrime(N, e=e)
+
+
+def invmod(a, n):
+    t = 0
+    new_t = 1
+    r = n
+    new_r = a
+    while new_r != 0:
+        quotient = r // new_r
+        t, new_t = new_t, t - quotient * new_t
+        r, new_r = new_r, r - quotient * new_r
+    if r > 1:  # a is not invertible
+        return None
+    if t < 0:
+        t += n
+    return t
+
+
+def int_to_bytes(i):
+    return i.to_bytes((i.bit_length() + 7) // 8, "big")
+
+
+class rsa:
+    def generate_keypair(self, prime_size=512, e=3):
+        self.e = e  # Public information provided with both keys
+        p = _get_prime(N=prime_size, e=e)
+        q = _get_prime(N=prime_size, e=e)
+        self.public_key = p * q
+
+        et = (p - 1) * (q - 1)
+        self._private_key = invmod(e, et)
+
+    def import_public_key(self, n, e=3):
+        self.e = e
+        self.public_key = n
+
+    def encrypt(self, plain_text):
+        msg = int.from_bytes(plain_text, "big")
+        return pow(msg, self.e, self.public_key)
+
+    def decrypt(self, cipher_text):
+        msg = pow(cipher_text, self._private_key, self.public_key)
+        return int_to_bytes(msg)
+
+
+class server:
+    def __init__(self, pki):
+        self.pki = pki
+        self.seen = set()  # Dont need to simulate expiry
+
+    def request(self, cipher_text):
+        if cipher_text not in self.seen:
+            self.seen.add(cipher_text)
+            return self.pki.decrypt(cipher_text)
+        return None
+
+
+def test_oracle(loops=3):
+    for _ in range(loops):
+        r = rsa()
+        r.generate_keypair()
+        msg = random_bytes(randint(32, 128))  # The secret message to find
+
+        # Public info
+        ct = r.encrypt(msg)
+        public_key = r.public_key
+        e = r.e
+
+        # Spin the server up with its private key
+        srv = server(r)
+
+        # "Legitimately" use this message (so its on the already seen list)
+        srv.request(ct)
+        if srv.request(ct) is not None:
+            return False  # Server failed to remember our cipher_text
+
+        fake_secret = randint(32, 512)
+        ct_prime = (pow(fake_secret, e, public_key) * ct) % public_key
+        msg_prime = int.from_bytes(srv.request(ct_prime), "big")
+        found_msg = (invmod(fake_secret, public_key) * msg_prime) % public_key
+        if int_to_bytes(found_msg) != msg:
+            return False  # Failed to workout the msg
+    return True
+
+
+if test_oracle():
+    print("RSA Oracle Attack Tests Passed!")
+else:
+    print("RSA Oracle Attack Tests Failed!")
