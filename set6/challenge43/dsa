@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+import os
+import sys
+from hashlib import sha1
+from random import randint
+from multiprocessing import Pool
+from math import ceil
+
+input_public_key = 0x84AD4719D044495496A3201C8FF484FEB45B962E7302E56A392AEE4ABAB3E4BDEBF2955B4736012F21A08084056B19BCD7FEE56048E004E44984E2F411788EFDC837A0D2E5ABB7B555039FD243AC01F0FB2ED1DEC568280CE678E931868D23EB095FDE9D3779191B8C0299D6E07BBB283E6633451E535C45513B2D33C99EA17
+input_data = b"""For those that envy a MC it can be hazardous to your health
+So be friendly, a matter of life and death, just like a etch-a-sketch
+"""
+input_data_hash = "d2d0714f014a9784047eaeccf956520045c45265"
+input_data_signature = (
+    548099063082341131477253921760299949438196259240,
+    857042759984254168557880549501802188789837994940,
+)
+input_private_key_fingerprint = "0954edd5e0afe5542a4adf012611a91912a3ec16"
+
+
+CRYPTOPALS_p = 0x800000000000000089E1855218A0E7DAC38136FFAFA72EDA7859F2171E25E65EAC698C1702578B07DC2A1076DA241C76C62D374D8389EA5AEFFD3226A0530CC565F3BF6B50929139EBEAC04F48C3C84AFB796D61E5A4F9A8FDA812AB59494232C7D2B4DEB50AA18EE9E132BFA85AC4374D7F9091ABC3D015EFC871A584471BB1
+CRYPTOPALS_q = 0xF4F47F05794B256174BBA6E9B396A7707E563C5B
+CRYPTOPALS_g = 0x5958C9D3898B224B12672C0B98E06C60DF923CB8BC999D119458FEF538B8FA4046C8DB53039DB620C094C9FA077EF389B5322A559946A71903F990F1F7E0E025E2D7F7CF494AFF1A0470F5B64C36B625A097F1651FE775323556FE00B3608C887892878480E99041BE601A62166CA6894BDD41A7054EC89F756BA9FC95302291
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+def invmod(a, n):
+    t = 0
+    new_t = 1
+    r = n
+    new_r = a
+    while new_r != 0:
+        quotient = r // new_r
+        t, new_t = new_t, t - quotient * new_t
+        r, new_r = new_r, r - quotient * new_r
+    if r > 1:  # a is not invertible
+        return None
+    if t < 0:
+        t += n
+    return t
+
+
+def int_byte_size(i):
+    return (i.bit_length() + 7) // 8
+
+
+class dsa:
+    def set_default_parms(self):
+        self.p = CRYPTOPALS_p
+        self.q = CRYPTOPALS_q
+        self.g = CRYPTOPALS_g
+
+    def generate_keypair(self, p=CRYPTOPALS_p, q=CRYPTOPALS_q, g=CRYPTOPALS_g):
+        self.p = p
+        self.q = q
+        self.g = g
+        self._private_key = randint(1, q - 1)
+        self.public_key = pow(g, self._private_key, p)
+
+    def import_public_key(self, n, p=CRYPTOPALS_p, q=CRYPTOPALS_q, g=CRYPTOPALS_g):
+        self.p = p
+        self.q = q
+        self.g = g
+        self.public_key = n
+
+    def _sign(self, hash, k):
+        r = pow(self.g, k, self.p) % self.q
+        inverse = invmod(k, self.q)
+        s = (inverse * (hash + (self._private_key * r))) % self.q
+        return r, s
+
+    def sign_hash(self, hash):
+        r = 0
+        s = 0
+        while True:  # Need to retry on 0'd outputs
+            k = randint(1, self.q - 1)
+            r, s = self._sign(hash, k)
+            if r == 0 or s == 0:
+                continue  # Try a new value for k
+            break
+        return r, s
+
+    def sign(self, data):
+        return self.sign_hash(int.from_bytes(sha1(data).digest(), "big"))
+
+    def verify(self, data, signature):
+        r = signature[0]
+        s = signature[1]
+        if r <= 0 or r >= self.q:
+            return False
+        if s <= 0 or s >= self.q:
+            return False
+
+        hash = int.from_bytes(sha1(data).digest(), "big")
+        w = invmod(s, self.q)
+        u1 = (hash * w) % self.q
+        u2 = (r * w) % self.q
+        g_u1 = pow(self.g, u1, self.p)
+        g_u2 = pow(self.public_key, u2, self.p)
+        v = ((g_u1 * g_u2) % self.p) % self.q
+        return v == r
+
+
+def find_dsa_private_key_and_k(q, hash, signature, search_space=None, procs=None):
+    if procs is None:
+        procs = os.cpu_count()
+
+    if search_space is None:
+        search_space = q - 1
+
+    arguments = []
+    range_size = ceil(search_space / procs)
+    i = 1
+    for _ in range(ceil(search_space / range_size)):
+        x = i + range_size
+        if x > search_space:
+            x = search_space + 1
+        arguments.append((q, hash, signature, range(i, x)))
+        i = x
+
+    with Pool(processes=procs) as pool:
+        for result in pool.imap_unordered(_find_dsa_private_key_and_k2, arguments):
+            if result is not None:
+                return result
+
+
+def _find_dsa_private_key_and_k2(args):
+    return _find_dsa_private_key_and_k(*args)
+
+
+def _find_dsa_private_key_and_k(q, hash, signature, iter):
+    r = signature[0]
+    s = signature[1]
+    d = dsa()
+    d.set_default_parms()
+    inv_r = invmod(r, q)
+    for k in iter:
+        d._private_key = (((s * k) - hash) * inv_r) % q
+        if d._sign(hash, k) == signature:
+            return d._private_key, k
+    return None, None
+
+
+def test_signing(loops=10):
+    for _ in range(loops):
+        data = random_bytes(randint(32, 1024))
+        private = dsa()
+        private.generate_keypair()
+        signature = private.sign(data)
+
+        public = dsa()
+        public.import_public_key(private.public_key)
+
+        if not public.verify(data, signature):
+            return False
+    return True
+
+
+def test_find_input_key():
+    hash = int.from_bytes(sha1(input_data).digest(), "big")
+    if hex(hash)[2:] != input_data_hash:
+        print("Input Data doesn't match its hash!")
+        return False
+
+    d = dsa()
+    d.import_public_key(input_public_key)
+    if not d.verify(input_data, input_data_signature):
+        print("Failed to verify input data and its signature")
+        return False
+
+    found_key, found_k = find_dsa_private_key_and_k(
+        CRYPTOPALS_q, hash, input_data_signature, search_space=2 ** 16
+    )
+    d._private_key = found_key
+    if d._sign(hash, found_k) != input_data_signature:
+        print("Unable to generate the same signature with found key & k")
+        return False
+
+    found_key_fingerprint = sha1(hex(found_key)[2:].encode()).hexdigest()
+    if found_key_fingerprint != input_private_key_fingerprint:
+        print("Found key doesn't match expected key fingerprint")
+        return False
+    return True
+
+
+def main():
+    if test_signing():
+        print("DSA Signing Tests Passed!")
+    else:
+        print("DSA Signing Tests Failed!")
+
+    if test_find_input_key():
+        print("Finding Private Key Tests Passed!")
+    else:
+        print("Finding Private Key Tests Failed!")
+
+
+if __name__ == "__main__":
+    main()
