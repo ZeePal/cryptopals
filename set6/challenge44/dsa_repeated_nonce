@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+from hashlib import sha1
+from random import randint
+
+input_public_key = 0x2D026F4BF30195EDE3A088DA85E398EF869611D0F68F0713D51C9C1A3A26C95105D915E2D8CDF26D056B86B8A7B85519B1C23CC3ECDC6062650462E3063BD179C2A6581519F674A61F1D89A1FFF27171EBC1B93D4DC57BCEB7AE2430F98A6A4D83D8279EE65D71C1203D2C96D65EBBF7CCE9D32971C3DE5084CCE04A2E147821
+input_data = {}
+input_private_key_fingerprint = "ca8f6f7c66fa362d40760d135b763eb8527d3d52"
+
+
+CRYPTOPALS_p = 0x800000000000000089E1855218A0E7DAC38136FFAFA72EDA7859F2171E25E65EAC698C1702578B07DC2A1076DA241C76C62D374D8389EA5AEFFD3226A0530CC565F3BF6B50929139EBEAC04F48C3C84AFB796D61E5A4F9A8FDA812AB59494232C7D2B4DEB50AA18EE9E132BFA85AC4374D7F9091ABC3D015EFC871A584471BB1
+CRYPTOPALS_q = 0xF4F47F05794B256174BBA6E9B396A7707E563C5B
+CRYPTOPALS_g = 0x5958C9D3898B224B12672C0B98E06C60DF923CB8BC999D119458FEF538B8FA4046C8DB53039DB620C094C9FA077EF389B5322A559946A71903F990F1F7E0E025E2D7F7CF494AFF1A0470F5B64C36B625A097F1651FE775323556FE00B3608C887892878480E99041BE601A62166CA6894BDD41A7054EC89F756BA9FC95302291
+
+
+def load_input_file():
+    output = []
+    with open("input.txt", "r") as f:
+        data = None
+        for l in f:
+            key, value = l[:-1].split(": ", 2)
+            if key == "msg":  # String'ed message
+                if data:
+                    output.append(data)
+                data = {key: value}
+            elif key in ["s", "r"]:  # String'ed number of the DSA signature
+                data[key] = int(value)
+            elif key == "m":  # Hex'ed number of the msg's hash, precomputed
+                data[key] = int(value, 16)
+        if data:
+            output.append(data)
+    return output
+
+
+def invmod(a, n):
+    t = 0
+    new_t = 1
+    r = n
+    new_r = a
+    while new_r != 0:
+        quotient = r // new_r
+        t, new_t = new_t, t - quotient * new_t
+        r, new_r = new_r, r - quotient * new_r
+    if r > 1:  # a is not invertible
+        return None
+    if t < 0:
+        t += n
+    return t
+
+
+def int_byte_size(i):
+    return (i.bit_length() + 7) // 8
+
+
+class dsa:
+    def set_default_parms(self):
+        self.p = CRYPTOPALS_p
+        self.q = CRYPTOPALS_q
+        self.g = CRYPTOPALS_g
+
+    def generate_keypair(self, p=CRYPTOPALS_p, q=CRYPTOPALS_q, g=CRYPTOPALS_g):
+        self.p = p
+        self.q = q
+        self.g = g
+        self._private_key = randint(1, q - 1)
+        self.public_key = pow(g, self._private_key, p)
+
+    def import_public_key(self, n, p=CRYPTOPALS_p, q=CRYPTOPALS_q, g=CRYPTOPALS_g):
+        self.p = p
+        self.q = q
+        self.g = g
+        self.public_key = n
+
+    def _sign(self, hash, k):
+        r = pow(self.g, k, self.p) % self.q
+        inverse = invmod(k, self.q)
+        s = (inverse * (hash + (self._private_key * r))) % self.q
+        return r, s
+
+    def sign_hash(self, hash):
+        r = 0
+        s = 0
+        while True:  # Need to retry on 0'd outputs
+            k = randint(1, self.q - 1)
+            r, s = self._sign(hash, k)
+            if r == 0 or s == 0:
+                continue  # Try a new value for k
+            break
+        return r, s
+
+    def sign(self, data):
+        return self.sign_hash(int.from_bytes(sha1(data).digest(), "big"))
+
+    def verify(self, data, signature):
+        r = signature[0]
+        s = signature[1]
+        if r <= 0 or r >= self.q:
+            return False
+        if s <= 0 or s >= self.q:
+            return False
+
+        hash = int.from_bytes(sha1(data).digest(), "big")
+        w = invmod(s, self.q)
+        u1 = (hash * w) % self.q
+        u2 = (r * w) % self.q
+        g_u1 = pow(self.g, u1, self.p)
+        g_u2 = pow(self.public_key, u2, self.p)
+        v = ((g_u1 * g_u2) % self.p) % self.q
+        return v == r
+
+
+def get_k_from_dup_r(q, hash1, s1, hash2, s2):
+    hash = hash1 - hash2
+    s = s1 - s2
+    return (invmod(s, q) * hash) % q
+
+
+def get_private_key_from_k(q, hash, r, s, k):
+    inv_r = invmod(r, q)
+    return (((s * k) - hash) * inv_r) % q
+
+
+def find_a_duplicate_r_msg(data):
+    found = {}
+    for item in data:
+        r = item["r"]
+        if r in found:
+            return found[r], item  # Second msg with same r, returning both
+        else:
+            found[r] = item
+    return None, None
+
+
+def test_find_input_key():
+    msg1, msg2 = find_a_duplicate_r_msg(load_input_file())
+
+    found_k = get_k_from_dup_r(CRYPTOPALS_q, msg1["m"], msg1["s"], msg2["m"], msg2["s"])
+    found_key = get_private_key_from_k(
+        CRYPTOPALS_q, msg1["m"], msg1["r"], msg1["s"], found_k
+    )
+
+    found_key_fingerprint = sha1(hex(found_key)[2:].encode()).hexdigest()
+    if found_key_fingerprint != input_private_key_fingerprint:
+        print("Found key doesn't match expected key fingerprint")
+        return False
+    return True
+
+
+if test_find_input_key():
+    print("Finding Private Key Tests Passed!")
+else:
+    print("Finding Private Key Tests Failed!")
