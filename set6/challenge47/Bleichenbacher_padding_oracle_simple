@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+import sys
+from Crypto.Util import number
+from random import randint
+from math import gcd
+
+# For performance!
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
+
+
+input = b"kick it, CC"
+
+
+def ceildiv(a, b):
+    return -(-a // b)
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+def invmod(a, n):
+    t = 0
+    new_t = 1
+    r = n
+    new_r = a
+    while new_r != 0:
+        quotient = r // new_r
+        t, new_t = new_t, t - quotient * new_t
+        r, new_r = new_r, r - quotient * new_r
+    if r > 1:  # a is not invertible
+        return None
+    if t < 0:
+        t += n
+    return t
+
+
+def int_to_bytes(i):
+    return i.to_bytes((i.bit_length() + 7) // 8, "big")
+
+
+def unpad(data):
+    if data[0] == 0 and data[1] == 2:
+        index = data.find(b"\x00", 2) + 1
+        if index != -1:
+            return data[index:]
+    return None
+
+
+class PaddingOracle:
+    def __init__(self, data, key_size):
+        self.__rsa = RSA.construct(self._generate_keypair(key_size // 2))
+        self.public_key = self.__rsa.n
+        self._key_byte_size = key_size // 8
+        self.cipher_text = PKCS1_v1_5.new(self.__rsa).encrypt(data)
+
+    @staticmethod
+    def _generate_keypair(prime_size=128, e=3):
+        p = PaddingOracle._get_prime(N=prime_size, e=e)
+        q = PaddingOracle._get_prime(N=prime_size, e=e)
+        n = p * q
+
+        et = (p - 1) * (q - 1)
+        d = invmod(e, et)
+        return (n, e, d)
+
+    @staticmethod
+    def _get_prime(N=128, e=3):
+        while True:
+            possible = number.getPrime(N)
+            if possible % 2 == 0:
+                if gcd(e, (possible - 1) // 2) == 1:
+                    return possible
+            else:
+                if gcd(e, possible - 1) == 1:
+                    return possible
+
+    def oracle(self, data):
+        plain_text = int(self.__rsa._decrypt(data))
+        return plain_text.to_bytes(self._key_byte_size, "big").startswith(b"\x00\x02")
+
+
+def step2b(public_key, cipher_text, e, previous_s, B, B2, B3, m, oracle):
+    s = previous_s + 1
+    while True:
+        mct = (cipher_text * pow(s, e, public_key)) % public_key
+        if oracle(mct):
+            return s
+        s += 1
+
+
+def step2c(public_key, cipher_text, e, previous_s, B, B2, B3, m, oracle):
+    r = 2 * (m[0][1] * previous_s - B2) // public_key
+    while True:
+        start = (B2 + r * public_key) // m[0][1]
+        stop = (B3 + r * public_key) // m[0][0]
+        for s in range(start, stop + 1):
+            mct = (cipher_text * pow(s, e, public_key)) % public_key
+            if oracle(mct):
+                return s
+        r += 1
+
+
+def _step3_join(output, lower, upper):
+    for i, (a, b) in enumerate(output):
+        if not (a > upper or b < lower):
+            output[i] = [min(a, lower), max(b, upper)]
+            return
+    output.append([lower, upper])
+
+
+def step3(Mi, s, B2, B3, n):
+    # print("step3")
+    output = []
+    for a, b in Mi:
+        start = ceildiv(a * s - B3 + 1, n)
+        end = (b * s - B2) // n
+        for r in range(start, end + 1):
+            _step3_join(
+                output, max(a, ceildiv(B2 + r * n, s)), min(b, (B3 - 1 + r * n) // s)
+            )
+    return output
+
+
+def crack_padding_oracle(oracle, n, cipher_text, e=3, key_size=256):
+    # All variable names below are based on the whitepaper
+    # Paper: http://archiv.infsec.ethz.ch/education/fs08/secsem/bleichenbacher98.pdf
+
+    c = int.from_bytes(cipher_text, "big")
+
+    # B2 is equiv to the 2B mentioned in the paper but python naming compliant
+    B = 2 ** (key_size - 16)
+    B2 = 2 * B
+    B3 = 3 * B
+
+    # Step 1
+    M = [[B2, B3 - 1]]
+
+    # Step 2a
+    s = n // B3
+    while True:
+        if oracle((c * pow(s, e, n)) % n):
+            break  # Valid s found
+        s += 1  # Try the next possible s
+
+    # Final loop to the possible intervals
+    while True:
+        # s = step2(n, c, e, s, B, B2, B3, M, oracle)
+        if len(M) > 1:
+            s = step2b(n, c, e, s, B, B2, B3, M, oracle)
+        else:
+            s = step2c(n, c, e, s, B, B2, B3, M, oracle)
+
+        M = step3(M, s, B2, B3, n)
+
+        # Step 4
+        if len(M) == 1 and M[0][0] == M[0][1]:
+            # If only 1 interval of range 0 is left its the plain_text msg
+            return M[0][0].to_bytes(len(cipher_text), "big")
+        # Otherwise reduce the intervals further
+
+
+def test_padding_oracle(key_size=256):
+    oracle = PaddingOracle(input, key_size=key_size)
+
+    found = crack_padding_oracle(
+        oracle.oracle, oracle.public_key, oracle.cipher_text, key_size=key_size
+    )
+    print(found)
+    print(unpad(found))
+    print(input)
+    return unpad(found) == input
+
+
+if test_padding_oracle(768):
+    print("Cracking with Padding Oracle Passed!")
+else:
+    print("Cracking with Padding Oracle Failed!")
