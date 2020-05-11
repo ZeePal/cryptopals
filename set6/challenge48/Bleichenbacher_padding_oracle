@@ -173,7 +173,7 @@ def test_padding_oracle(key_size=256):
     return unpad(found) == input
 
 
-if test_padding_oracle():
+if test_padding_oracle(768):
     print("Cracking with Padding Oracle Passed!")
 else:
     print("Cracking with Padding Oracle Failed!")
