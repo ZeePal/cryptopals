@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+import sys
+from Crypto.Util import number
+from random import randint
+
+
+tests = {2753: [17, 3120], 16: [11, 35], 1969: [42, 2017], 1: [1, 127], 84: [3, 251]}
+
+
+def random_bytes(size):
+    i = randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+def _get_prime(N=512, e=3):
+    return number.getStrongPrime(N, e=e)
+
+
+def invmod(a, n):
+    t = 0
+    new_t = 1
+    r = n
+    new_r = a
+    while new_r != 0:
+        quotient = r // new_r
+        t, new_t = new_t, t - quotient * new_t
+        r, new_r = new_r, r - quotient * new_r
+    if r > 1:  # a is not invertible
+        return None
+    if t < 0:
+        t += n
+    return t
+
+
+def int_to_bytes(i):
+    return i.to_bytes((i.bit_length() + 7) // 8, "big")
+
+
+class rsa:
+    def generate_keypair(self, prime_size=512, e=3):
+        self.e = e  # Public information provided with both keys
+        p = _get_prime(N=prime_size, e=e)
+        q = _get_prime(N=prime_size, e=e)
+        self.public_key = p * q
+
+        et = (p - 1) * (q - 1)
+        self._private_key = invmod(e, et)
+
+    def import_public_key(self, n, e=3):
+        self.e = e
+        self.public_key = n
+
+    def encrypt(self, plain_text):
+        padding = bytes([randint(0, 255)])
+        padded_plain_text = padding + plain_text  # To keep the zero'd prefixs
+        msg = int.from_bytes(padded_plain_text, "big")
+        return pow(msg, self.e, self.public_key)
+
+    def decrypt(self, cipher_text):
+        msg = pow(cipher_text, self._private_key, self.public_key)
+        return int_to_bytes(msg)[1:]  # Drop the padding
+
+
+def test_invmod():
+    for output, inputs in tests.items():
+        if invmod(*inputs) != output:
+            return False
+    return True
+
+
+def test_rsa():
+    for _ in range(10):
+        r = rsa()
+        r.generate_keypair()
+        msg = random_bytes(randint(16, 128))
+        cipher_text = r.encrypt(msg)
+        plain_text = r.decrypt(cipher_text)
+        if plain_text != msg:
+            return False
+    return True
+
+
+if test_invmod():
+    print("Invmod Tests Passed!")
+else:
+    print("Invmod Tests Failed!")
+
+if test_rsa():
+    print("RSA Tests Passed!")
+else:
+    print("RSA Tests Failed!")

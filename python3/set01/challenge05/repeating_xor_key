@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+import sys
+
+input = """Burning 'em, if you ain't quick and nimble
+I go crazy when I hear a cymbal""".encode()
+key = "ICE".encode()
+expected_output = """0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272
+a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"""
+
+
+def xor_1byte(a, b):
+    k = b * len(a)
+    return xor(a, k)
+
+
+def xor(a, b):
+    r = int.from_bytes(a, sys.byteorder) ^ int.from_bytes(b, sys.byteorder)
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+def xor_repeating(a, b):
+    k = (b * (len(a) // len(b))) + b[0 : (len(a) % len(b))]
+    return xor(a, k)
+
+
+output = xor_repeating(input, key).hex()
+
+clean_expected_output = expected_output.replace("\n", "")
+print("Expected Output: {}".format(clean_expected_output))
+print("My Output:       {}".format(output))
+
+if output == clean_expected_output:
+    print("Pass!")
+else:
+    print("Fail!")

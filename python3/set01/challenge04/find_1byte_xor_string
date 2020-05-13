@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+RESOURCES_DIR = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),  # This scripts folder
+    "..",
+    "..",
+    "..",
+    "resources",
+    "set01",
+    "challenge04",
+)
+
+input = []
+with open(os.path.join(RESOURCES_DIR, "input.txt")) as f:
+    for l in f:
+        input.append(bytes.fromhex(l.strip()))
+
+VOWELS = [ord(i) for i in [" ", "A", "E", "I", "O", "U", "a", "e", "i", "o", "u"]]
+
+
+def text_vowel_scores(b):
+    s = 0
+    for i in VOWELS:
+        s += b.count(i)
+    return s
+
+
+def xor_1byte(a, b):
+    k = b * len(a)
+    return xor(a, k)
+
+
+def xor(a, b):
+    r = int.from_bytes(a, sys.byteorder) ^ int.from_bytes(b, sys.byteorder)
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+scores = []
+
+for i, d in enumerate(input):
+    for x in range(256):
+        k = bytes((x,))
+        r = xor_1byte(d, k)
+        s = text_vowel_scores(r)
+        scores.append((s, i, k))
+
+
+scores.sort(key=lambda t: t[0], reverse=True)
+print("Input Line Number: {}".format(scores[0][1] + 1))
+print("Key: {}".format(scores[0][2]))
+print('=== "Decrypted" Text ===')
+print(xor_1byte(input[scores[0][1]], scores[0][2]).decode())

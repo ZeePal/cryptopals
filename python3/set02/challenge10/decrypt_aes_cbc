@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+import os
+import base64
+import sys
+import random
+from math import ceil
+from Crypto.Cipher import AES
+
+RESOURCES_DIR = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),  # This scripts folder
+    "..",
+    "..",
+    "..",
+    "resources",
+    "set02",
+    "challenge10",
+)
+
+input_key = "YELLOW SUBMARINE".encode()
+input_iv = b"\x00" * 16
+input = None
+with open(os.path.join(RESOURCES_DIR, "input.txt")) as f:
+    input = base64.b64decode(f.read())
+
+
+class block_wrapper:
+    def __init__(self, data, block_size):
+        self.data = data
+        self.block_size = block_size
+        self.count = ceil(len(data) / block_size)
+
+    def __getitem__(self, index):
+        x = self.block_size * index
+        y = x + self.block_size
+        return self.data[x:y]
+
+    def __iter__(self):
+        return block_iter(self)
+
+
+class block_iter:
+    def __init__(self, blocks):
+        self.current = -1
+        self.blocks = blocks
+
+    def __next__(self):
+        self.current += 1
+        if self.current < self.blocks.count:
+            return self.blocks[self.current]
+        raise StopIteration
+
+
+def random_bytes(size):
+    i = random.randint(0, 2 ** (8 * size))
+    return i.to_bytes(size, sys.byteorder)
+
+
+def pad(d, block_size=16):
+    r = block_size - (len(d) % block_size)
+    if r > 0:
+        p = bytes([r]) * r
+    else:
+        p = bytes([block_size]) * block_size
+    return d + p
+
+
+def unpad(d):
+    return d[: -d[-1]]
+
+
+def xor(a, b):
+    r = int.from_bytes(a, sys.byteorder) ^ int.from_bytes(b, sys.byteorder)
+    return r.to_bytes(len(a), sys.byteorder)
+
+
+def cbc_encrypt(key, iv, plain_text):
+    output = bytearray()
+    previous_block = iv
+    blocks = block_wrapper(pad(plain_text), len(key))
+    cipher = AES.new(key, AES.MODE_ECB)
+    for current_block in blocks:
+        cipher_text = cipher.encrypt(xor(previous_block, current_block))
+        output.extend(cipher_text)
+        previous_block = cipher_text
+    return output
+
+
+def cbc_decrypt(key, iv, cipher_text):
+    output = bytearray()
+    previous_block = iv
+    blocks = block_wrapper(cipher_text, len(key))
+    cipher = AES.new(key, AES.MODE_ECB)
+    for current_block in blocks:
+        output.extend(xor(previous_block, cipher.decrypt(current_block)))
+        previous_block = current_block
+    return unpad(output)
+
+
+def cbc_test():
+    print("=== CBC Test ===")
+    test = random_bytes(random.randrange(100, 200))
+    test_key = random_bytes(16)
+    test_iv = random_bytes(16)
+
+    test_encrypted = cbc_encrypt(test_key, test_iv, test)
+    test_decrypted = cbc_decrypt(test_key, test_iv, test_encrypted)
+
+    if test_decrypted == test:
+        print("Pass!")
+    else:
+        print("Fail!")
+
+
+cbc_test()
+print("\n=== Decrypted Text ===")
+print(cbc_decrypt(input_key, input_iv, input).decode())

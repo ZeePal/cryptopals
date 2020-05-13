@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+import os
+import base64
+from Crypto.Cipher import AES
+
+RESOURCES_DIR = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),  # This scripts folder
+    "..",
+    "..",
+    "..",
+    "resources",
+    "set01",
+    "challenge07",
+)
+
+key = "YELLOW SUBMARINE".encode()
+input = None
+with open(os.path.join(RESOURCES_DIR, "input.txt")) as f:
+    input = base64.b64decode(f.read())
+
+c = AES.new(key, AES.MODE_ECB)
+r = c.decrypt(input)
+p = r[: -r[-1]]  # Strip the padding
+print('=== "Decrypted" Text ===')
+print(p.decode())

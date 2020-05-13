@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+from random import randint
+
+
+def right_shift(y, shift, b):
+    y ^= (y >> shift) & b
+    return y
+
+
+def unright_shift(input, shift, bitand=(2 ** 32 - 1), bits=32):
+    loops = 0
+    output = input
+    for _ in range(bits // shift):
+        x = ((output >> shift) & bitand) ^ input
+        if x == output:
+            break  # We solved it early, Lucky number or Bitand influence
+        loops += 1
+        output = x
+    return output, loops
+
+
+def left_shift(y, shift, bitand=(2 ** 32 - 1)):
+    y ^= (y << shift) & bitand
+    return y
+
+
+def unleft_shift(input, shift, bitand=(2 ** 32 - 1), bits=32):
+    loops = 0
+    output = input
+    for _ in range(bits // shift):
+        x = ((output << shift) & bitand) ^ input
+        if x == output:
+            break  # We solved it early, Lucky number or Bitand influence
+        loops += 1
+        output = x
+    return output, loops
+
+
+def untemper_mt19937(i):
+    # Magic numbers from mt19937
+    u = 11
+    d = int("FFFFFFFF", 16)
+    s = 7
+    b = int("9D2C5680", 16)
+    t = 15
+    c = int("EFC60000", 16)
+    l = 18
+
+    i, _ = unright_shift(i, l)
+    i, _ = unleft_shift(i, t, c)
+    i, _ = unleft_shift(i, s, b)
+    i, _ = unright_shift(i, u, d)
+    return i
+
+
+def temper_mt19937(y):
+    # Magic numbers from mt19937
+    u = 11
+    d = int("FFFFFFFF", 16)
+    s = 7
+    b = int("9D2C5680", 16)
+    t = 15
+    c = int("EFC60000", 16)
+    l = 18
+
+    y ^= (y >> u) & d
+    y ^= (y << s) & b
+    y ^= (y << t) & c
+    y ^= y >> l
+    return y
+
+
+def get_invert_shifts_count(shift, bitand=(2 ** 32 - 1)):
+    max = -1
+    for _ in range(100000):
+        i = randint(0, 2 ** 32)
+        r = right_shift(i, shift, bitand)
+        x, shifts = unright_shift(r, shift, bitand)
+        if i != x:
+            print("!!! Fail on Right Shift !!!")
+            return -1
+        if shifts > max:
+            max = shifts
+
+    for _ in range(100000):
+        i = randint(0, 2 ** 32)
+        r = left_shift(i, shift, bitand)
+        x, shifts = unleft_shift(r, shift, bitand)
+        if i != x:
+            print("!!! Fail on Left Shift !!!")
+            return -1
+        if shifts > max:
+            max = shifts
+    return max
+
+
+def test_unshifts():
+    for shifts in range(1, 32):
+        bitands = [randint(0, 2 ** 32 - 1) for _ in range(5)]
+        bitands[0] = 2 ** 32 - 1  # Want to test with a "blank" bitand also
+        for bitand in bitands:
+            for _ in range(1000):
+                i = randint(0, 2 ** 32)
+                r = right_shift(i, shifts, bitand)
+                x, z = unright_shift(r, shifts, bitand)
+                if i != x:
+                    print("!!! Fail on Right Shift !!!")
+                    return False
+
+            for _ in range(1000):
+                i = randint(0, 2 ** 32)
+                r = left_shift(i, shifts, bitand)
+                x, z = unleft_shift(r, shifts, bitand)
+                if i != x:
+                    print("!!! Fail on Left Shift !!!")
+                    return False
+    return True
+
+
+def test_untemper():
+    for _ in range(100000):
+        i = randint(0, 2 ** 32 - 1)
+        r = temper_mt19937(i)
+        x = untemper_mt19937(r)
+        if x != i:
+            print("!!! Unable to untemper !!!")
+            return False
+    return True
+
+
+if test_unshifts():
+    print("Unshift Tests Pass!")
+else:
+    print("Unshift Tests Failed!")
+
+if test_untemper():
+    print("Untemper Tests Pass!")
+else:
+    print("Untemper Tests Failed!")
+
+# Magic numbers from mt19937
+u = 11
+d = int("FFFFFFFF", 16)
+s = 7
+b = int("9D2C5680", 16)
+t = 15
+c = int("EFC60000", 16)
+l = 18
+
+shifts_for_l = get_invert_shifts_count(l)
+print(f"\nShifts needed for L: {shifts_for_l}")
+
+shifts_for_t = get_invert_shifts_count(t)
+shifts_for_tc = get_invert_shifts_count(t, c)
+print(f"\nShifts needed for T without C: {shifts_for_t}")
+print(f"Shifts needed for T & C: {shifts_for_tc}")
+
+shifts_for_s = get_invert_shifts_count(s)
+shifts_for_sb = get_invert_shifts_count(s, b)
+print(f"\nShifts needed for S without B: {shifts_for_s}")
+print(f"Shifts needed for S & B: {shifts_for_sb}")
+
+shifts_for_u = get_invert_shifts_count(u)
+shifts_for_ud = get_invert_shifts_count(u, d)
+print(f"\nShifts needed for U without D: {shifts_for_u}")
+print(f"Shifts needed for U & D: {shifts_for_ud}")
