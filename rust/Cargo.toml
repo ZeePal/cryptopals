@@ -1,0 +1,13 @@
+[package]
+name = "cryptopals"
+version = "0.1.0"
+authors = ["Paul Harrington <pallsjh@gmail.com>"]
+edition = "2018"
+
+repository = "https://github.com/ZeePal/cryptopals/"
+publish = false
+
+
+[dependencies]
+hex = "0.4.2"
+base64 = "0.12.1"

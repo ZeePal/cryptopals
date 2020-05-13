@@ -1,0 +1,5 @@
+# This file is used to tell the Rust IDE to use the rust sub folder instead
+[workspace]
+members = [
+    "rust",
+]
