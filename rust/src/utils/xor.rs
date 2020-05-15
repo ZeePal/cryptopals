@@ -12,9 +12,9 @@ pub fn xor<T: AsRef<[u8]>, X: AsRef<[u8]>>(left: T, right: X) -> Result<Vec<u8>,
         return Err("Inputs aren't of equal length");
     }
 
-    let mut output = vec![0; length];
+    let mut output = vec![];
     for i in 0..length {
-        output[i] = left[i] ^ right[i]
+        output.push(left[i] ^ right[i]);
     }
 
     Ok(output)
