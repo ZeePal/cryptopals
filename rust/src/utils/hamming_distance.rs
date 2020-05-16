@@ -1,13 +1,11 @@
 use super::xor;
 
 pub fn hamming_distance<T: AsRef<[u8]>, X: AsRef<[u8]>>(left: T, right: X) -> u32 {
-    let left = left.as_ref();
+    let mut left = left.as_ref().to_vec();
     let right = right.as_ref();
 
-    match xor(left, right) {
-        Ok(r) => r.iter().map(|&x| x.count_ones()).sum(),
-        _ => 0,
-    }
+    xor(&mut left, right);
+    left.iter().map(|&x| x.count_ones()).sum()
 }
 
 #[cfg(test)]

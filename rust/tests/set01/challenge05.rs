@@ -12,7 +12,8 @@ I go crazy when I hear a cymbal";
 a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
         .replace("\n", "");
 
-    let result = crypt(input_key, input_data);
+    let mut result = input_data.as_bytes().to_vec();
+    crypt(&mut result, input_key);
     let result_hex = hex::encode(result);
 
     assert_eq!(result_hex, expected);

@@ -1,20 +1,31 @@
 use crate::ciphers::xor::single_byte::crypt;
 use crate::text_scoring::common::count as get_score;
 
-pub fn crack<T: AsRef<[u8]>>(raw_cipher_text: T) -> (Vec<u8>, u8, usize) {
-    let mut best_score = 0;
-    let mut best_key = 0;
-    let mut best_plain_text = vec![];
+pub struct CrackResult {
+    pub score: usize,
+    pub key: u8,
+    pub plain_text: Vec<u8>,
+}
+
+pub fn crack<T: AsRef<[u8]>>(cipher_text: T) -> CrackResult {
+    let cipher_text = cipher_text.as_ref();
+    let mut output = CrackResult {
+        score: 0,
+        key: 0,
+        plain_text: vec![],
+    };
 
     for i in 0..=255 {
-        let plain_text = crypt(i, &raw_cipher_text);
+        let mut plain_text = cipher_text.to_vec();
+        crypt(&mut plain_text, i);
+
         let score = get_score(&plain_text);
-        if score > best_score {
-            best_score = score;
-            best_plain_text = plain_text;
-            best_key = i;
+        if score > output.score {
+            output.score = score;
+            output.key = i;
+            output.plain_text = plain_text;
         }
     }
 
-    (best_plain_text, best_key, best_score)
+    output
 }

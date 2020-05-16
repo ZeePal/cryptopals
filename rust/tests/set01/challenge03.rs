@@ -13,10 +13,10 @@ fn test() {
     let expected_key = 'X' as u8;
 
     let decoded_input = hex::decode(input).unwrap();
-    let (plain_text_in_bytes, key, _) = crack(decoded_input);
 
-    let plain_text = from_utf8(&plain_text_in_bytes).unwrap();
+    let result = crack(decoded_input);
+    let plain_text = from_utf8(&result.plain_text).unwrap();
 
     assert_eq!(plain_text, expected_plain_text);
-    assert_eq!(key, expected_key);
+    assert_eq!(result.key, expected_key);
 }

@@ -1,8 +1,7 @@
-pub fn crypt<K: AsRef<[u8]>, T: AsRef<[u8]>>(key: K, data: T) -> Vec<u8> {
+pub fn crypt<T: AsRef<[u8]>>(data: &mut Vec<u8>, key: T) {
     let key = key.as_ref();
-    let data = data.as_ref();
-    data.iter()
-        .zip(key.iter().cycle()) // Set the key's iterator to repeat/loop forever
-        .map(|(&x, &y)| &x ^ &y)
-        .collect()
+
+    for (a, b) in data.iter_mut().zip(key.iter().cycle()) {
+        *a ^= b
+    }
 }

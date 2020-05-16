@@ -6,24 +6,41 @@ use std::path::Path;
 
 use crate::crackers::xor::single_byte::crack;
 
-pub fn detect<P: AsRef<Path>>(path: P) -> Result<(Vec<u8>, u8, usize, usize), Box<dyn Error>> {
-    let file = File::open(path)?;
-    let file = BufReader::new(file);
+pub struct DetectEntryResult {
+    pub score: usize,
+    pub key: u8,
+    pub plain_text: Vec<u8>,
+    pub index: usize,
+}
 
-    let mut best_score = 0;
-    let mut best_plain_text = vec![];
-    let mut best_key = 0;
-    let mut best_line_number = 0;
+pub fn detect(data: &Vec<Vec<u8>>) -> DetectEntryResult {
+    let mut output = DetectEntryResult {
+        score: 0,
+        key: 0,
+        plain_text: vec![],
+        index: 0,
+    };
 
-    for (i, line) in file.lines().enumerate() {
-        let (plain_text, key, score) = crack(hex::decode(line?)?);
-        if score > best_score {
-            best_score = score;
-            best_plain_text = plain_text;
-            best_key = key;
-            best_line_number = i + 1;
+    for (i, entry) in data.iter().enumerate() {
+        let result = crack(&entry);
+        if result.score > output.score {
+            output.score = result.score;
+            output.key = result.key;
+            output.plain_text = result.plain_text;
+            output.index = i;
         }
     }
 
-    Ok((best_plain_text, best_key, best_score, best_line_number))
+    output
+}
+
+pub fn detect_in_file<P: AsRef<Path>>(path: P) -> Result<DetectEntryResult, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let file = BufReader::new(file);
+
+    let mut data = vec![];
+    for line in file.lines() {
+        data.push(hex::decode(line?)?);
+    }
+    Ok(detect(&data))
 }
