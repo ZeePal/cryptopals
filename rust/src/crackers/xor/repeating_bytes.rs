@@ -15,20 +15,21 @@ pub struct CrackResult {
 }
 
 // Example arguments: Vec<u8>, 2, 40, 5, 3
-pub fn crack(
-    data: &Vec<u8>,
+pub fn crack<T: AsRef<[u8]>>(
+    data: T,
     min_key_size: usize,
     max_key_size: usize,
     samples: usize,
     check_top_x_key_sizes: usize,
 ) -> CrackResult {
+    let data = data.as_ref();
     let mut output = CrackResult {
         score: 0,
         key: vec![],
     };
 
     let keysizes = detect_keysizes(
-        &data,
+        data,
         min_key_size,
         max_key_size,
         samples,
@@ -36,7 +37,7 @@ pub fn crack(
     );
 
     for keysize in keysizes {
-        let data_transposed = transpose(&data, keysize.size);
+        let data_transposed = transpose(data, keysize.size);
 
         let mut score = 0;
         let mut key = vec![0; keysize.size];

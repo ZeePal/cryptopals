@@ -3,7 +3,8 @@ use std::error::Error;
 use hex::decode as hex_decode;
 use hex::encode as hex_encode;
 
-pub fn xor<T: AsRef<[u8]>>(left: &mut Vec<u8>, right: T) {
+pub fn xor<D: AsMut<[u8]>, T: AsRef<[u8]>>(left: &mut D, right: T) {
+    let left = left.as_mut();
     let right = right.as_ref();
 
     for (a, b) in left.iter_mut().zip(right.iter()) {
