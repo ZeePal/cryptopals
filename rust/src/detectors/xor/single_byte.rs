@@ -13,7 +13,7 @@ pub struct DetectEntryResult {
     pub index: usize,
 }
 
-pub fn detect(data: &Vec<Vec<u8>>) -> DetectEntryResult {
+pub fn detect_in_possibles(data: &Vec<Vec<u8>>) -> DetectEntryResult {
     let mut output = DetectEntryResult {
         score: 0,
         key: 0,
@@ -42,5 +42,5 @@ pub fn detect_in_file<P: AsRef<Path>>(path: P) -> Result<DetectEntryResult, Box<
     for line in file.lines() {
         data.push(hex::decode(line?)?);
     }
-    Ok(detect(&data))
+    Ok(detect_in_possibles(&data))
 }

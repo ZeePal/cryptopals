@@ -10,17 +10,25 @@ pub struct DetectEntryResult {
     pub index: usize,
 }
 
-pub fn detect(data: &Vec<Vec<u8>>) -> DetectEntryResult {
+pub fn detect<T: AsRef<[u8]>>(data: T) -> usize {
+    let data = data.as_ref();
+
+    let mut found = HashSet::new();
+    let mut score = 0;
+    for chunk in data.chunks_exact(16) {
+        if !found.insert(chunk) {
+            score += 1;
+        }
+    }
+
+    score
+}
+
+pub fn detect_in_possibles(data: &Vec<Vec<u8>>) -> DetectEntryResult {
     let mut output = DetectEntryResult { score: 0, index: 0 };
 
     for (i, entry) in data.iter().enumerate() {
-        let mut found = HashSet::new();
-        let mut score = 0;
-        for chunk in entry.chunks_exact(16) {
-            if !found.insert(chunk) {
-                score += 1;
-            }
-        }
+        let score = detect(&entry);
         if score > output.score {
             output.score = score;
             output.index = i;
@@ -38,5 +46,5 @@ pub fn detect_in_file<P: AsRef<Path>>(path: P) -> Result<DetectEntryResult, Box<
     for line in file.lines() {
         data.push(hex::decode(line?)?);
     }
-    Ok(detect(&data))
+    Ok(detect_in_possibles(&data))
 }
