@@ -11,3 +11,4 @@ publish = false
 [dependencies]
 hex = "0.4.2"
 base64 = "0.12.1"
+aesni = "0.6.0"

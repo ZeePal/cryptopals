@@ -1,0 +1,6 @@
+[build]
+# To seek Atom:ide-rust's rust-analyser seperate from cargo test commands 
+target-dir = "target"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Ctarget-feature=+aes,+ssse3"]
