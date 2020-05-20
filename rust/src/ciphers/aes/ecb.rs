@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
@@ -13,44 +12,56 @@ use aesni::Aes128;
 use crate::utils::pad;
 use crate::utils::unpad;
 
-pub fn decrypt_with_cipher(mut data: &mut Vec<u8>, cipher: Aes128) {
-    for mut block in data.chunks_exact_mut(16) {
-        cipher.decrypt_block(&mut GenericArray::from_mut_slice(&mut block));
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+const BLOCK_SIZE: u8 = 16;
+
+pub fn decrypt_with_cipher(data: &mut Vec<u8>, cipher: Aes128) {
+    for mut block in data.chunks_exact_mut(BLOCK_SIZE as usize) {
+        cipher.decrypt_block(GenericArray::from_mut_slice(&mut block));
     }
-    unpad(&mut data, 16);
+    unpad(data, BLOCK_SIZE);
 }
 
-pub fn decrypt<T: AsRef<[u8]>>(mut data: &mut Vec<u8>, key: T) {
-    let cipher = Aes128::new(GenericArray::from_slice(key.as_ref()));
-    decrypt_with_cipher(&mut data, cipher);
+pub fn decrypt<K>(data: &mut Vec<u8>, key: K)
+where
+    K: AsRef<[u8]>,
+{
+    let key = key.as_ref();
+    let cipher = Aes128::new(GenericArray::from_slice(key));
+    decrypt_with_cipher(data, cipher);
 }
 
-pub fn decrypt_file<P: AsRef<Path>, T: AsRef<[u8]>>(
-    path: P,
-    key: T,
-) -> Result<Vec<u8>, Box<dyn Error>> {
-    let file = File::open(path)?;
-    let file = BufReader::new(file);
+pub fn decrypt_file<P, K>(path: P, key: K) -> Result<Vec<u8>>
+where
+    P: AsRef<Path>,
+    K: AsRef<[u8]>,
+{
+    let file = BufReader::new(File::open(path)?);
 
     let mut output = b64_decode(
         file.bytes()
             .map(|x| x.unwrap())
-            .filter(|&x| x != 10) // Ignore newline characters
+            .filter(|&x| x != b'\n')
             .collect::<Vec<u8>>(),
     )?;
 
-    decrypt(&mut output, &key);
+    decrypt(&mut output, key);
     Ok(output)
 }
 
-pub fn encrypt_with_cipher(mut data: &mut Vec<u8>, cipher: Aes128) {
-    pad(&mut data, 16);
-    for mut block in data.chunks_exact_mut(16) {
-        cipher.encrypt_block(&mut GenericArray::from_mut_slice(&mut block));
+pub fn encrypt_with_cipher(data: &mut Vec<u8>, cipher: Aes128) {
+    pad(data, BLOCK_SIZE);
+    for mut block in data.chunks_exact_mut(BLOCK_SIZE as usize) {
+        cipher.encrypt_block(GenericArray::from_mut_slice(&mut block));
     }
 }
 
-pub fn encrypt<T: AsRef<[u8]>>(mut data: &mut Vec<u8>, key: T) {
-    let cipher = Aes128::new(GenericArray::from_slice(key.as_ref()));
-    encrypt_with_cipher(&mut data, cipher);
+pub fn encrypt<K>(data: &mut Vec<u8>, key: K)
+where
+    K: AsRef<[u8]>,
+{
+    let key = key.as_ref();
+    let cipher = Aes128::new(GenericArray::from_slice(key));
+    encrypt_with_cipher(data, cipher);
 }

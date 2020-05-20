@@ -1,6 +1,10 @@
 use super::xor;
 
-pub fn hamming_distance<T: AsRef<[u8]>, X: AsRef<[u8]>>(left: T, right: X) -> u32 {
+pub fn hamming_distance<L, R>(left: L, right: R) -> u32
+where
+    L: AsRef<[u8]>,
+    R: AsRef<[u8]>,
+{
     let mut left = left.as_ref().to_vec();
     let right = right.as_ref();
 

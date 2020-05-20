@@ -8,7 +8,7 @@ fn test() {
     let input2 = "686974207468652062756c6c277320657965";
     let expected = "746865206b696420646f6e277420706c6179";
 
-    let result = cryptopals::utils::xor_hex(&input1, &input2).unwrap();
+    let result = cryptopals::utils::xor_hex(input1, input2).unwrap();
 
     assert_eq!(result, expected);
 }

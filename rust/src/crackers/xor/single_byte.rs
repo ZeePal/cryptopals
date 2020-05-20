@@ -7,7 +7,10 @@ pub struct CrackResult {
     pub plain_text: Vec<u8>,
 }
 
-pub fn crack<T: AsRef<[u8]>>(cipher_text: T) -> CrackResult {
+pub fn crack<C>(cipher_text: C) -> CrackResult
+where
+    C: AsRef<[u8]>,
+{
     let cipher_text = cipher_text.as_ref();
     let mut output = CrackResult {
         score: 0,
@@ -26,6 +29,5 @@ pub fn crack<T: AsRef<[u8]>>(cipher_text: T) -> CrackResult {
             output.plain_text = plain_text;
         }
     }
-
     output
 }

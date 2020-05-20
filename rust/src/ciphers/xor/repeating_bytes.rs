@@ -1,4 +1,8 @@
-pub fn crypt<D: AsMut<[u8]>, T: AsRef<[u8]>>(data: &mut D, key: T) {
+pub fn crypt<D, K>(mut data: D, key: K)
+where
+    D: AsMut<[u8]>,
+    K: AsRef<[u8]>,
+{
     let data = data.as_mut();
     let key = key.as_ref();
 

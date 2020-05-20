@@ -14,20 +14,24 @@ fn add_keysize_score(list: &mut Vec<KeysizeScore>, max: usize, item: KeysizeScor
     list.truncate(max);
 }
 
-pub fn detect_keysizes<T: AsRef<[u8]>>(
-    data: T,
+pub fn detect_keysizes<C>(
+    cipher_text: C,
     min_size: usize,
     max_size: usize,
     samples: usize,
     top: usize,
-) -> Vec<KeysizeScore> {
-    let data = data.as_ref();
+) -> Vec<KeysizeScore>
+where
+    C: AsRef<[u8]>,
+{
+    let cipher_text = cipher_text.as_ref();
 
     let mut output = vec![];
-    for size in min_size..=max_size {
+    for keysize in min_size..=max_size {
         let mut score = 0;
         let mut checked = 0;
-        let mut chunks = data.chunks_exact(size);
+
+        let mut chunks = cipher_text.chunks_exact(keysize);
         while let (Some(x), Some(y)) = (chunks.next(), chunks.next()) {
             score += hamming_distance(x, y);
             checked += 1;
@@ -35,15 +39,15 @@ pub fn detect_keysizes<T: AsRef<[u8]>>(
                 break;
             }
         }
+
         add_keysize_score(
             &mut output,
             top,
             KeysizeScore {
-                size: size,
-                score: score as f32 / checked as f32 / size as f32,
+                size: keysize,
+                score: score as f32 / checked as f32 / keysize as f32,
             },
         );
     }
-
     output
 }

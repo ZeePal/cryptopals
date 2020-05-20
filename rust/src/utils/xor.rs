@@ -1,9 +1,13 @@
-use std::error::Error;
-
 use hex::decode as hex_decode;
 use hex::encode as hex_encode;
 
-pub fn xor<D: AsMut<[u8]>, T: AsRef<[u8]>>(left: &mut D, right: T) {
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+pub fn xor<L, R>(mut left: L, right: R)
+where
+    L: AsMut<[u8]>,
+    R: AsRef<[u8]>,
+{
     let left = left.as_mut();
     let right = right.as_ref();
 
@@ -12,10 +16,11 @@ pub fn xor<D: AsMut<[u8]>, T: AsRef<[u8]>>(left: &mut D, right: T) {
     }
 }
 
-pub fn xor_hex<T: AsRef<[u8]>, X: AsRef<[u8]>>(
-    left: T,
-    right: X,
-) -> Result<String, Box<dyn Error>> {
+pub fn xor_hex<L, R>(left: L, right: R) -> Result<String>
+where
+    L: AsRef<[u8]>,
+    R: AsRef<[u8]>,
+{
     let mut left = hex_decode(left.as_ref())?;
     let right = hex_decode(right.as_ref())?;
 
